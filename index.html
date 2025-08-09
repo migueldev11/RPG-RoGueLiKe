@@ -68,6 +68,7 @@
   .player { color: #0f0; }
   .enemy { color: #f00; }
   .item { color: #ff0; }
+  .stairs { color: #00f; }
 </style>
 </head>
 <body>
@@ -78,9 +79,9 @@
 
 <div id="hotbar">
   <div>Vida: <span id="hp">100</span></div>
-  <div>Level: <span id="level">1</span></div>
+  <div>Andar: <span id="floor">1</span></div>
   <div>Tempo: <span id="time">0s</span></div>
-  <div>Itens: <span id="items">Nenhum</span></div>
+  <div>Dano: <span id="damage">10</span></div>
 </div>
 
 <div id="msg"></div>
@@ -98,27 +99,28 @@
 (() => {
   const gameContainer = document.getElementById('game-container');
   const hpElem = document.getElementById('hp');
-  const levelElem = document.getElementById('level');
+  const floorElem = document.getElementById('floor');
   const timeElem = document.getElementById('time');
-  const itemsElem = document.getElementById('items');
+  const damageElem = document.getElementById('damage');
   const msgElem = document.getElementById('msg');
 
   const MAP_WIDTH = 40;
   const MAP_HEIGHT = 20;
+  const TOTAL_FLOORS = 5;
 
   let map = [];
   let player = {
     x: 0,
     y: 0,
     hp: 100,
-    level: 1,
-    items: [],
-    damage: 10
+    floor: 1,
+    baseDamage: 10
   };
   let enemies = [];
   let gameTime = 0;
+  let isGameOver = false;
 
-  // Função que cria um mapa procedural simples com salas e corredores
+  // Função que cria um mapa procedural com salas e corredores
   function generateDungeon() {
     map = [];
     for (let y = 0; y < MAP_HEIGHT; y++) {
@@ -162,27 +164,60 @@
       }
     }
 
-    // Coloca jogador na sala 0
     const startRoom = rooms[0];
     player.x = Math.floor(startRoom.x + startRoom.w / 2);
     player.y = Math.floor(startRoom.y + startRoom.h / 2);
 
-    // Adiciona inimigos e itens
     enemies = [];
-    const entityCount = 5 + Math.floor(Math.random() * 5); // Entre 5 e 9 entidades
-    
+    const entityCount = 5 + player.floor + Math.floor(Math.random() * 5); // Aumenta a quantidade por andar
+
+    if (player.floor === TOTAL_FLOORS) {
+      // Adiciona o chefe no último andar
+      let placedBoss = false;
+      while (!placedBoss) {
+        const rx = Math.floor(Math.random() * MAP_WIDTH);
+        const ry = Math.floor(Math.random() * MAP_HEIGHT);
+        if (map[ry][rx] === ' ' && (rx !== player.x || ry !== player.y)) {
+          enemies.push({ x: rx, y: ry, hp: 100, damage: 25, symbol: 'B' });
+          placedBoss = true;
+        }
+      }
+      addMessage(`Você chegou ao último andar! Derrote o Chefe ('B') para vencer!`);
+    } else {
+      // Adiciona a escada para o próximo andar
+      let placedStairs = false;
+      while (!placedStairs) {
+        const rx = Math.floor(Math.random() * MAP_WIDTH);
+        const ry = Math.floor(Math.random() * MAP_HEIGHT);
+        if (map[ry][rx] === ' ' && (rx !== player.x || ry !== player.y)) {
+          map[ry][rx] = '<';
+          placedStairs = true;
+        }
+      }
+    }
+
+    // Adiciona inimigos e itens
     for (let i = 0; i < entityCount; i++) {
       let placed = false;
       while (!placed) {
         const rx = Math.floor(Math.random() * MAP_WIDTH);
         const ry = Math.floor(Math.random() * MAP_HEIGHT);
-        // Coloca inimigo ou item se o espaço estiver vazio e não for a posição do jogador
-        if (map[ry][rx] === ' ' && (rx !== player.x || ry !== player.y)) {
-          // 80% de chance de ser inimigo, 20% de ser item
-          if (Math.random() < 0.8) {
-            enemies.push({ x: rx, y: ry, hp: 20, damage: 5, symbol: 'Z' });
-          } else {
-            map[ry][rx] = 'I'; // Representa um item
+        const isPlayerPos = (rx === player.x && ry === player.y);
+        const isOccupied = map[ry][rx] !== ' ';
+
+        if (map[ry][rx] === ' ' && !isPlayerPos) {
+          // Tipos de inimigos e itens
+          const rand = Math.random();
+          if (rand < 0.6) { // Zumbi
+            enemies.push({ x: rx, y: ry, hp: 20 * player.floor, damage: 5 * player.floor, symbol: 'Z' });
+          } else if (rand < 0.8) { // Esqueleto
+            enemies.push({ x: rx, y: ry, hp: 30 * player.floor, damage: 8 * player.floor, symbol: 'S' });
+          } else if (rand < 0.9) { // Goblin
+            enemies.push({ x: rx, y: ry, hp: 15 * player.floor, damage: 10 * player.floor, symbol: 'G' });
+          } else if (rand < 0.95) { // Poção
+            map[ry][rx] = 'P';
+          } else { // Arma
+            map[ry][rx] = 'W';
           }
           placed = true;
         }
@@ -201,8 +236,10 @@
           row += `<span class="player">@</span>`;
         } else if (entity) {
           row += `<span class="enemy">${entity.symbol}</span>`;
-        } else if (map[y][x] === 'I') {
-          row += `<span class="item">I</span>`;
+        } else if (map[y][x] === 'P' || map[y][x] === 'W') {
+          row += `<span class="item">${map[y][x]}</span>`;
+        } else if (map[y][x] === '<') {
+          row += `<span class="stairs"><</span>`;
         } else {
           row += map[y][x];
         }
@@ -215,9 +252,9 @@
   // Atualiza hotbar
   function updateHotbar() {
     hpElem.textContent = player.hp;
-    levelElem.textContent = player.level;
+    floorElem.textContent = player.floor;
     timeElem.textContent = gameTime + 's';
-    itemsElem.textContent = player.items.length > 0 ? player.items.join(', ') : 'Nenhum';
+    damageElem.textContent = player.baseDamage;
   }
 
   // Checa se pode andar (não andar em parede ou em inimigo)
@@ -229,28 +266,32 @@
 
   // Lógica de combate
   function handleCombat(enemy, index) {
-    const playerDamage = player.damage;
+    const playerDamage = player.baseDamage + Math.floor(Math.random() * 5); // Dano com aleatoriedade
     const enemyDamage = enemy.damage;
     
     enemy.hp -= playerDamage;
-    player.hp -= enemyDamage;
-    
-    addMessage(`Você atacou o Zumbi, causando ${playerDamage} de dano!`);
-    addMessage(`O Zumbi te atacou, causando ${enemyDamage} de dano!`);
+    addMessage(`Você atacou o ${enemy.symbol}, causando ${playerDamage} de dano! (${enemy.hp} HP restantes)`);
     
     if (enemy.hp <= 0) {
-      addMessage('Você derrotou o Zumbi!');
+      addMessage(`Você derrotou o ${enemy.symbol}!`);
       enemies.splice(index, 1); // Remove o inimigo
+      return;
     }
+
+    player.hp -= enemyDamage;
+    addMessage(`O ${enemy.symbol} te atacou, causando ${enemyDamage} de dano!`);
     
     if (player.hp <= 0) {
-      addMessage('Você morreu...');
-      // Implementar lógica de Game Over
+      isGameOver = true;
+      addMessage('Você morreu... Fim de jogo!');
+      // TODO: Adicionar tela de game over
     }
   }
 
   // Movimenta o jogador
   function movePlayer(dx, dy) {
+    if (isGameOver) return;
+    
     const nx = player.x + dx;
     const ny = player.y + dy;
     
@@ -262,17 +303,26 @@
       player.x = nx;
       player.y = ny;
       
-      // Checa se tem um item na nova posição
-      if (map[ny][nx] === 'I') {
-        player.items.push('Poção de Vida');
-        map[ny][nx] = ' '; // Remove o item do mapa
-        addMessage('Você encontrou uma Poção de Vida!');
+      const tile = map[ny][nx];
+      if (tile === 'P') {
+        player.hp = Math.min(100, player.hp + 25);
+        map[ny][nx] = ' ';
+        addMessage('Você encontrou uma poção e recuperou 25 de vida!');
+      } else if (tile === 'W') {
+        player.baseDamage += 5;
+        map[ny][nx] = ' ';
+        addMessage('Você encontrou uma nova arma e seu dano aumentou!');
+      } else if (tile === '<') {
+        player.floor++;
+        addMessage(`Você desceu para o Andar ${player.floor}!`);
+        generateDungeon();
       } else {
         addMessage(`Você se moveu para (${nx},${ny})`);
       }
     } else {
       addMessage('Não pode andar aí!');
     }
+    
     draw();
     updateHotbar();
   }
@@ -286,7 +336,6 @@
       const nx = enemy.x + randomDirection[0];
       const ny = enemy.y + randomDirection[1];
       
-      // Inimigos só podem andar para espaços vazios
       if (canMoveTo(nx, ny) && (nx !== player.x || ny !== player.y)) {
         enemy.x = nx;
         enemy.y = ny;
@@ -307,6 +356,7 @@
 
   // Teclado para desktop
   window.addEventListener('keydown', e => {
+    if (isGameOver) return;
     switch (e.key) {
       case 'ArrowUp': movePlayer(0, -1); break;
       case 'ArrowDown': movePlayer(0, 1); break;
@@ -317,24 +367,37 @@
 
   // Loop principal do jogo
   function gameLoop() {
+    if (isGameOver) return;
     gameTime++;
     moveEnemies();
     draw();
     updateHotbar();
-    if (player.hp > 0) {
+    
+    // Condição de vitória (derrotar o boss no último andar)
+    if (player.floor === TOTAL_FLOORS && enemies.length === 0) {
+      isGameOver = true;
+      addMessage('Parabéns! Você derrotou o Chefe e venceu o jogo!');
+    } else {
       setTimeout(gameLoop, 1000); // Roda a cada segundo
     }
   }
 
-  // Inicia jogo
-  generateDungeon();
-  draw();
-  updateHotbar();
-  gameLoop();
+  // Inicia o jogo
+  function startGame() {
+    isGameOver = false;
+    player = { x: 0, y: 0, hp: 100, floor: 1, baseDamage: 10 };
+    gameTime = 0;
+    generateDungeon();
+    draw();
+    updateHotbar();
+    gameLoop();
+    addMessage(`Bem-vindo à masmorra! Derrote o Chefe no Andar ${TOTAL_FLOORS} para vencer.`);
+  }
+  
+  startGame();
 
 })();
 </script>
 
 </body>
 </html>
-
