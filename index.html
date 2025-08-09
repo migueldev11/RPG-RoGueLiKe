@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Rogue-like Turnos Completo</title>
+<style>
+  body {
+    font-family: monospace, monospace;
+    background: #111;
+    color: #eee;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    user-select: none;
+    touch-action: manipulation;
+  }
+  h1 {
+    margin: 10px 0;
+    font-size: 18px;
+    text-align: center;
+  }
+  #game-container {
+    border: 3px solid #555;
+    background: #222;
+    margin-bottom: 10px;
+    width: 320px;
+    height: 240px;
+  }
+  canvas {
+    width: 320px;
+    height: 240px;
+    image-rendering: pixelated;
+    touch-action: none;
+    background: #222;
+  }
+  #hotbar {
+    display: flex;
+    justify-content: space-around;
+    width: 320px;
+    background: #333;
+    padding: 6px 0;
+    font-size: 14px;
+    border-top: 2px solid #555;
+    margin-bottom: 10px;
+  }
+  #controls {
+    width: 320px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    user-select: none;
+  }
+  #controls > div {
+    display: flex;
+    justify-content: center;
+    margin-top: 5px;
+    gap: 10px;
+  }
+  #controls button {
+    background: #555;
+    border: none;
+    color: #eee;
+    font-size: 24px;
+    width: 60px;
+    height: 60px;
+    border-radius: 10px;
+    touch-action: manipulation;
+    user-select: none;
+  }
+  #controls button:active {
+    background: #888;
+  }
+  #class-selection {
+    margin-top: 20px;
+    text-align: center;
+  }
+  #class-selection button {
+    font-size: 18px;
+    padding: 8px 16px;
+    margin: 0 5px;
+    cursor: pointer;
+    user-select: none;
+  }
+  #msg {
+    width: 320px;
+    height: 60px;
+    background: #111;
+    color: #afa;
+    font-size: 14px;
+    padding: 5px;
+    border: 2px solid #555;
+    margin-bottom: 10px;
+    overflow-y: auto;
+  }
+</style>
+</head>
+<body>
+  <h1>Rogue-like Turnos Completo</h1>
+  <div id="game-container">
+    <canvas id="game" width="320" height="240"></canvas>
+  </div>
+
+  <div id="hotbar">
+    <div>Vida: <span id="hp">100</span></div>
+    <div>MP: <span id="mp">50</span></div>
+    <div>Level: <span id="level">1</span></div>
+    <div>Itens: <span id="items">Nenhum</span></div>
+    <div>Tempo: <span id="time">0s</span></div>
+  </div>
+
+  <div id="msg"></div>
+
+  <div id="controls">
+    <button id="magic-btn">Magia (10 MP)</button>
+    <button id="open-chest-btn" disabled>Abrir Baú</button>
+  </div>
+
+  <div id="controls">
+    <button id="up">▲</button>
+    <div>
+      <button id="left">◄</button>
+      <button id="down">▼</button>
+      <button id="right">►</button>
+    </div>
+  </div>
+
+  <div id="class-selection">
+    <h2>Escolha sua Classe</h2>
+    <button data-class="warrior">Guerreiro</button>
+    <button data-class="mage">Mago</button>
+    <button data-class="rogue">Ladino</button>
+    <br/><br/>
+    <button id="load-save">Carregar Save</button>
+    <button id="delete-save">Apagar Save</button>
+  </div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const TILE_SIZE = 8;
+  const MAP_WIDTH = 40;
+  const MAP_HEIGHT = 30;
+
+  let map = [];
+  let player = null;
+  let enemies = [];
+  let chests = [];
+  let gameStarted = false;
+  let gameTime = 0;
+  let currentTurn = 'player';
+  let msgElem = document.getElementById('msg');
+  let openChestBtn = document.getElementById('open-chest-btn');
+  let magicBtn = document.getElementById('magic-btn');
+  let currentLevel = 1;
+
+  const itemList = [
+    { name: 'Poção de Vida', type: 'heal', value: 30 },
+    { name: 'Poção de MP', type: 'mp', value: 20 },
+    { name: 'Espada +1', type: 'attack', value: 3 },
+    { name: 'Escudo +1', type: 'defense', value: 2 }
+  ];
+
+  const classes = {
+    warrior: { hp: 120, mp: 20, attack: 10, defense: 5, magicAttack: 4 },
+    mage: { hp: 80, mp: 50, attack: 6, defense: 3, magicAttack: 15 },
+    rogue: { hp: 90, mp: 30, attack: 12, defense: 4, magicAttack: 8 }
+  };
+
+  const enemyTypes = [
+    { name: 'Goblin', hp: 20, attack: 5, defense: 2, magicAttack: 0, color: 'red' },
+    { name: 'Esqueleto', hp: 30, attack: 7, defense: 3, magicAttack: 0, color: 'orange' },
+    { name: 'Mago das Sombras', hp: 25, attack: 4, defense: 2, magicAttack: 8, color: 'purple' }
+  ];
+
+  function addMessage(text) {
+    msgElem.innerText = text;
+  }
+
+  function saveGame() {
+    if (!gameStarted) return;
+    const saveData = { player, enemies, chests, map, gameTime, currentLevel, currentTurn };
+    localStorage.setItem('roguelikeSave', JSON.stringify(saveData));
+    addMessage('Jogo salvo!');
+  }
+
+  function loadGame() {
+    const saveDataStr = localStorage.getItem('roguelikeSave');
+    if (!saveDataStr) {
+      addMessage('Nenhum save encontrado.');
+      return false;
+    }
+    try {
+      const saveData = JSON.parse(saveDataStr);
+      player = saveData.player;
+      enemies = saveData.enemies;
+      chests = saveData.chests;
+      map = saveData.map;
+      gameTime = saveData.gameTime;
+      currentLevel = saveData.currentLevel;
+      currentTurn = saveData.currentTurn;
+      gameStarted = true;
+      updateHotbar();
+      draw();
+      document.getElementById('class-selection').style.display = 'none';
+      addMessage('Save carregado com sucesso!');
+      return true;
+    } catch(e) {
+      addMessage('Erro ao carregar save.');
+      return false;
+    }
+  }
+
+  function deleteSave() {
+    localStorage.removeItem('roguelikeSave');
+    addMessage('Save apagado!');
+  }
+
+  function generateMap() {
+    map = Array.from({ length: MAP_HEIGHT }, () =>
+      Array.from({ length: MAP_WIDTH }, () => '#')
+    );
+    const rooms = [];
+    function carveRoom(x, y, w, h) {
+      for (let i = y; i < y + h; i++) {
+        for (let j = x; j < x + w; j++) {
+          if (i >= 0 && i < MAP_HEIGHT && j >= 0 && j < MAP_WIDTH) map[i][j] = '.';
+        }
+      }
+      rooms.push({x, y, w, h});
+    }
+    const roomCount = 4 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < roomCount; i++) {
+      let w = 6 + Math.floor(Math.random() * 5);
+      let h = 4 + Math.floor(Math.random() * 4);
+      let x = Math.floor(Math.random() * (MAP_WIDTH - w - 1));
+      let y = Math.floor(Math.random() * (MAP_HEIGHT - h - 1));
+      carveRoom(x, y, w, h);
+    }
+    function connectRooms(r1, r2) {
+      let x1 = Math.floor(r1.x + r1.w/2);
+      let y1 = Math.floor(r1.y + r1.h/2);
+      let x2 = Math.floor(r2.x + r2.w/2);
+      let y2 = Math.floor(r2.y + r2.h/2);
+      while (x1 !== x2) {
+        map[y1][x1] = '.';
+        x1 += x1 < x2 ? 1 : -1;
+      }
+      while (y1 !== y2) {
+        map[y1][x1] = '.';
+        y1 += y1 < y2 ? 1 : -1;
+      }
+    }
+    for (let i = 0; i < rooms.length - 1; i++) {
+      connectRooms(rooms[i], rooms[i + 1]);
+    }
+    chests = [];
+    for (let i = 0; i < rooms.length; i++) {
+      if (Math.random() < 0.6) {
+        let r = rooms[i];
+        let cx = r.x + 1 + Math.floor(Math.random() * (r.w - 2));
+        let cy = r.y + 1 + Math.floor(Math.random() * (r.h - 2));
+        if (map[cy][cx] === '.') {
+          map[cy][cx] = 'C';
+          chests.push({x: cx, y: cy, opened: false, items: generateChestItems()});
+        }
+      }
+    }
+  }
+
+  function generateChestItems() {
+    const count = 1 + Math.floor(Math.random() * 2);
+    let chestItems = [];
+    for (let i = 0; i < count; i++) {
+      const idx = Math.floor(Math.random() * itemList.length);
+      chestItems.push(itemList[idx].name);
+    }
+    return chestItems;
+  }
+
+  function drawMap() {
+    for (let y = 0; y < MAP_HEIGHT; y++) {
+      for (let x = 0; x < MAP_WIDTH; x++) {
+        let tile = map[y][x];
+        if (tile === '#') ctx.fillStyle = '#333';
+        else if (tile === '.') ctx.fillStyle = '#999';
+        else if (tile === 'C') ctx.fillStyle = '#b8860b';
+        else ctx.fillStyle = '#000';
+        ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+      }
+    }
+  }
+
+  function drawEntities() {
+    ctx.fillStyle = 'lime';
+    ctx.fillRect(player.x * TILE_SIZE, player.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+    enemies.forEach(e => {
+      ctx.fillStyle = e.color;
+      ctx.fillRect(e.x * TILE_SIZE, e.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+    });
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawMap();
+    drawEntities();
+  }
+
+  function updateHotbar() {
+    document.getElementById('hp').innerText = player.hp;
+    document.getElementById('mp').innerText = player.mp;
+    document.getElementById('level').innerText = player.level;
+    document.getElementById('items').innerText = player.items.length > 0 ? player.items.join(', ') : 'Nenhum';
+    document.getElementById('time').innerText = Math.floor(gameTime) + 's';
+    let chestHere = chests.find(c => c.x === player.x && c.y === player.y && !c.opened);
+    openChestBtn.disabled = !chestHere || currentTurn !== 'player';
+    magicBtn.disabled = player.mp < 10 || currentTurn !== 'player';
+  }
+
+  function createPlayer(chosenClass) {
+    const base = classes[chosenClass];
+    player = {
+      x: 1,
+      y: 1,
+      hp: base.hp,
+      maxHp: base.hp,
+      mp: base.mp,
+      maxMp: base.mp,
+      attack: base.attack,
+      defense: base.defense,
+      magicAttack: base.magicAttack,
+      level: 1,
+      exp: 0,
+      items: [],
+      class: chosenClass
+    };
+  }
+
+  function spawnEnemies() {
+    enemies = [];
+    let enemyCount = 5 + currentLevel;
+    for (let i = 0; i < enemyCount; i++) {
+      let x, y;
+      do {
+        x = Math.floor(Math.random() * MAP_WIDTH);
+        y = Math.floor(Math.random() * MAP_HEIGHT);
+      } while (map[y][x] === '#' || map[y][x] === 'C' || (x === player.x && y === player.y) || enemies.some(en => en.x === x && en.y === y));
+      let et = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
+      enemies.push({
+        x, y,
+        hp: et.hp + currentLevel * 5,
+        attack: et.attack + currentLevel,
+        defense: et.defense + Math.floor(currentLevel/2),
+        magicAttack: et.magicAttack + Math.floor(currentLevel/2),
+        name: et.name,
+        color: et.color
+      });
+    }
+  }
+
+  function movePlayer(dx, dy) {
+    if (currentTurn !== 'player') return;
+    const nx = player.x + dx;
+    const ny = player.y + dy;
+    if (nx < 0 || nx >= MAP_WIDTH || ny < 0 || ny >= MAP_HEIGHT) return;
+    if (map[ny][nx] === '#') return;
+    const enemy = enemies.find(e => e.x === nx && e.y === ny);
+    if (enemy) {
+      attack(player, enemy, false);
+      if (enemy.hp <= 0) {
+        enemies = enemies.filter(e => e.hp > 0);
+        player.exp += 10;
+        if (player.exp >= player.level * 20) levelUp();
+        addMessage(`Você matou o ${enemy.name}!`);
+      } else {
+        addMessage(`Você atacou o ${enemy.name}, vida dele: ${enemy.hp}`);
+      }
+      currentTurn = 'enemy';
+    } else {
+      player.x = nx;
+      player.y = ny;
+      currentTurn = 'enemy';
+      addMessage(`Você se moveu para (${nx},${ny})`);
+    }
+    updateHotbar();
+    draw();
+  }
+
+  function attack(attacker, defender, isMagic) {
+    let attackValue = isMagic ? attacker.magicAttack : attacker.attack;
+    let defenseValue = defender.defense;
+    if (isMagic) defenseValue = Math.floor(defender.defense / 2);
+    const damage = Math.max(1, attackValue - defenseValue);
+    defender.hp -= damage;
+  }
+
+  function enemyTurn() {
+    enemies.forEach(e => {
+      if (e.hp <= 0) return;
+      let dist = Math.abs(e.x - player.x) + Math.abs(e.y - player.y);
+      if (dist === 1) {
+        if (e.magicAttack > 0 && Math.random() < 0.3) {
+          attack(e, player, true);
+          addMessage(`${e.name} usou magia em você! Vida: ${player.hp}`);
+        } else {
+          attack(e, player, false);
+          addMessage(`${e.name} atacou você! Vida: ${player.hp}`);
+        }
+      } else {
+        let dx = 0, dy = 0;
+        if (e.x < player.x) dx = 1;
+        else if (e.x > player.x) dx = -1;
+        if (e.y < player.y) dy = 1;
+        else if (e.y > player.y) dy = -1;
+        let nx = e.x + dx;
+        let ny = e.y + dy;
+        if (nx >= 0 && nx < MAP_WIDTH && ny >= 0 && ny < MAP_HEIGHT) {
+          if (map[ny][nx] !== '#' && !enemies.some(en => en.x === nx && en.y === ny) && !(nx === player.x && ny === player.y)) {
+            e.x = nx;
+            e.y = ny;
+          }
+        }
+      }
+    });
+    if (player.hp <= 0) {
+      addMessage('Você morreu! Recarregue a página para tentar novamente.');
+      currentTurn = 'dead';
+      return;
+    }
+    currentTurn = 'player';
+    updateHotbar();
+    draw();
+  }
+
+  function levelUp() {
+    player.level++;
+    player.exp = 0;
+    player.maxHp += 15;
+    player.hp = player.maxHp;
+    player.maxMp += 10;
+    player.mp = player.maxMp;
+    player.attack += 3;
+    player.defense += 1;
+    player.magicAttack += 2;
+    addMessage(`Você subiu para o nível ${player.level}!`);
+  }
+
+  function updateTime(delta) {
+    if (!gameStarted) return;
+    gameTime += delta;
+    updateHotbar();
+  }
+
+  function useMagic() {
+    if (currentTurn !== 'player') return;
+    if (player.mp < 10) {
+      addMessage('MP insuficiente!');
+      return;
+    }
+    // Ataca inimigo adjacente (direita, cima, esquerda, baixo) com magia
+    const directions = [
+      { dx: 1, dy: 0 },
+      { dx: 0, dy: -1 },
+      { dx: -1, dy: 0 },
+      { dx: 0, dy: 1 }
+    ];
+    let enemy = null;
+    for (const d of directions) {
+      let nx = player.x + d.dx;
+      let ny = player.y + d.dy;
+      enemy = enemies.find(e => e.x === nx && e.y === ny);
+      if (enemy) break;
+    }
+    if (!enemy) {
+      addMessage('Nenhum inimigo adjacente para usar magia.');
+      return;
+    }
+    player.mp -= 10;
+    attack(player, enemy, true);
+    if (enemy.hp <= 0) {
+      enemies = enemies.filter(e => e.hp > 0);
+      player.exp += 15;
+      if (player.exp >= player.level * 20) levelUp();
+      addMessage(`Você usou magia e matou o ${enemy.name}!`);
+    } else {
+      addMessage(`Você usou magia no ${enemy.name}, vida dele: ${enemy.hp}`);
+    }
+    currentTurn = 'enemy';
+    updateHotbar();
+    draw();
+  }
+
+  function openChest() {
+    if (currentTurn !== 'player') return;
+    const chest = chests.find(c => c.x === player.x && c.y === player.y && !c.opened);
+    if (!chest) {
+      addMessage('Não há baú aqui!');
+      return;
+    }
+    chest.opened = true;
+    chest.items.forEach(item => {
+      player.items.push(item);
+    });
+    addMessage(`Você abriu um baú e achou: ${chest.items.join(', ')}`);
+    updateHotbar();
+    draw();
+  }
+
+  // Controle de tempo para update do tempo de jogo
+  let lastTime = 0;
+  function gameLoop(timestamp = 0) {
+    if (!lastTime) lastTime = timestamp;
+    const delta = (timestamp - lastTime) / 1000;
+    lastTime = timestamp;
+    if (gameStarted && currentTurn === 'enemy') {
+      enemyTurn();
+    }
+    updateTime(delta);
+    requestAnimationFrame(gameLoop);
+  }
+
+  // Eventos dos botões
+  document.getElementById('up').addEventListener('click', () => movePlayer(0, -1));
+  document.getElementById('down').addEventListener('click', () => movePlayer(0, 1));
+  document.getElementById('left').addEventListener('click', () => movePlayer(-1, 0));
+  document.getElementById('right').addEventListener('click', () => movePlayer(1, 0));
+
+  magicBtn.addEventListener('click', () => useMagic());
+  openChestBtn.addEventListener('click', () => openChest());
+
+  // Escolha de classe
+  document.querySelectorAll('#class-selection button[data-class]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const chosenClass = btn.getAttribute('data-class');
+      createPlayer(chosenClass);
+      generateMap();
+      spawnEnemies();
+      player.x = 2;
+      player.y = 2;
+      currentTurn = 'player';
+      gameStarted = true;
+      gameTime = 0;
+      currentLevel = 1;
+      updateHotbar();
+      draw();
+      document.getElementById('class-selection').style.display = 'none';
+      addMessage(`Você escolheu a classe ${chosenClass}. Boa sorte!`);
+      saveGame();
+    });
+  });
+
+  // Load e delete save
+  document.getElementById('load-save').addEventListener('click', () => {
+    if (loadGame()) {
+      document.getElementById('class-selection').style.display = 'none';
+    }
+  });
+  document.getElementById('delete-save').addEventListener('click', () => {
+    deleteSave();
+  });
+
+  // Salvar jogo automaticamente a cada 15s
+  setInterval(() => {
+    if (gameStarted) saveGame();
+  }, 15000);
+
+  draw();
+  gameLoop();
+
+})();
+</script>
+
+</body>
+</html>
