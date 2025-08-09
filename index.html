@@ -3,222 +3,475 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<title>Roguelike ASCII com Vários Inimigos</title>
+<title>Rogue-like ASCII Turnos Mobile</title>
 <style>
   body {
     font-family: monospace;
     background: #111;
     color: #eee;
-    margin: 0; padding: 10px;
+    margin: 0; padding: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     user-select: none;
     -webkit-user-select: none;
   }
+  h1 {
+    margin: 8px 0 4px;
+    font-size: 20px;
+  }
   #game {
     background: #222;
+    white-space: pre;
+    font-size: 16px;
     line-height: 1.1;
     letter-spacing: 0.15em;
-    font-size: 16px;
-    white-space: pre;
     width: max-content;
-    padding: 10px;
+    padding: 8px 12px;
     border: 2px solid #555;
+    margin-bottom: 8px;
+    min-width: 320px;
+    min-height: 320px;
   }
-  #status {
-    margin-top: 10px;
+  #hotbar {
+    width: 320px;
     background: #333;
-    padding: 6px;
-    border: 1px solid #555;
+    color: #afa;
+    display: flex;
+    justify-content: space-around;
+    padding: 6px 4px;
+    font-size: 14px;
+    border-top: 2px solid #555;
+    margin-bottom: 8px;
+    user-select: none;
   }
   #messages {
-    margin-top: 8px;
-    height: 80px;
-    overflow-y: auto;
-    background: #222;
+    width: 320px;
+    height: 60px;
+    background: #111;
     border: 1px solid #555;
     padding: 6px;
+    overflow-y: auto;
     font-size: 14px;
+    margin-bottom: 8px;
+  }
+  #controls {
+    width: 320px;
+    display: grid;
+    grid-template-columns: 60px 60px 60px;
+    grid-template-rows: 60px 60px;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  #controls button {
+    font-size: 24px;
+    background: #444;
+    border: none;
+    color: #eee;
+    border-radius: 8px;
+    user-select: none;
+    touch-action: manipulation;
+  }
+  #controls button:active {
+    background: #888;
+  }
+  #class-selection {
+    width: 320px;
+    background: #222;
+    border: 2px solid #555;
+    padding: 12px;
+    margin-bottom: 12px;
+    user-select: none;
+  }
+  #class-selection button {
+    background: #555;
+    border: none;
+    color: #eee;
+    font-size: 16px;
+    padding: 8px 12px;
+    margin: 4px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  #class-selection button:active {
+    background: #aaa;
+    color: #222;
   }
 </style>
 </head>
 <body>
 
-<h2>Roguelike ASCII com Vários Inimigos</h2>
-<pre id="game"></pre>
+<h1>Rogue-like ASCII Turnos</h1>
 
-<div id="status">
-  Vida: <span id="hp">30</span> |
-  Level: <span id="level">1</span> |
-  EXP: <span id="exp">0</span>
+<div id="game"></div>
+
+<div id="hotbar">
+  <div>❤️ Vida: <span id="hp">0</span>/<span id="maxhp">0</span></div>
+  <div>🗡️ Ataque: <span id="attack">0</span></div>
+  <div>🛡 Defesa: <span id="defense">0</span></div>
+  <div>⭐ Nível: <span id="level">0</span></div>
+  <div>⏳ Tempo: <span id="time">0s</span></div>
 </div>
 
-<div id="messages"></div>
+<div id="messages">Escolha uma classe para começar!</div>
+
+<div id="controls" style="display:none;">
+  <button id="up">▲</button>
+  <button id="magic">✨ Magia</button>
+  <button id="save">💾 Salvar</button>
+  <button id="left">◄</button>
+  <button id="down">▼</button>
+  <button id="right">►</button>
+</div>
+
+<div id="class-selection">
+  <h3>Escolha sua classe</h3>
+  <button data-class="warrior">Guerreiro</button>
+  <button data-class="mage">Mago</button>
+  <button data-class="rogue">Ladino</button>
+  <button id="load-save">Carregar Save</button>
+  <button id="delete-save">Apagar Save</button>
+</div>
 
 <script>
 (() => {
   const MAP_W = 40;
   const MAP_H = 20;
-
-  let map = [];
-  let player = {x: 1, y: 1, hp: 30, maxHp: 30, level: 1, exp: 0};
-  let enemies = [];
-
-  const enemyTypes = [
-    {name: 'Zumbi', char: 'Z', hp: 12, attack: 4},
-    {name: 'Goblin', char: 'g', hp: 10, attack: 5},
-    {name: 'Esqueleto', char: 'S', hp: 15, attack: 6},
-    {name: 'Aranha', char: 'A', hp: 8, attack: 3},
-    {name: 'Mago Sombrio', char: 'M', hp: 10, attack: 7},
-    {name: 'Lobo', char: 'L', hp: 14, attack: 6},
-    {name: 'Troll', char: 'T', hp: 20, attack: 8},
-    {name: 'Slime', char: 's', hp: 6, attack: 2},
-    {name: 'Orc', char: 'O', hp: 18, attack: 7},
-    {name: 'Vampiro', char: 'V', hp: 16, attack: 7}
-  ];
-
   const gameElem = document.getElementById('game');
   const hpElem = document.getElementById('hp');
+  const maxHpElem = document.getElementById('maxhp');
+  const attackElem = document.getElementById('attack');
+  const defenseElem = document.getElementById('defense');
   const levelElem = document.getElementById('level');
-  const expElem = document.getElementById('exp');
+  const timeElem = document.getElementById('time');
   const messagesElem = document.getElementById('messages');
+  const controlsDiv = document.getElementById('controls');
+  const classSelectionDiv = document.getElementById('class-selection');
+
+  let map = [];
+  let player = null;
+  let enemies = [];
+  let gameStarted = false;
+  let gameTime = 0;
+  let currentTurn = 'player';
+
+  const classes = {
+    warrior: { hp: 120, attack: 10, defense: 6, magicAttack: 3, mp: 20 },
+    mage: { hp: 80, attack: 5, defense: 3, magicAttack: 15, mp: 50 },
+    rogue: { hp: 90, attack: 12, defense: 4, magicAttack: 6, mp: 30 }
+  };
+
+  const enemyTypes = [
+    {name: 'Zumbi', char: 'Z', hp: 20, attack: 6, defense: 2},
+    {name: 'Goblin', char: 'g', hp: 15, attack: 5, defense: 1},
+    {name: 'Esqueleto', char: 'S', hp: 18, attack: 7, defense: 3},
+    {name: 'Aranha', char: 'A', hp: 10, attack: 4, defense: 1},
+    {name: 'Mago Sombrio', char: 'M', hp: 12, attack: 5, defense: 2},
+    {name: 'Lobo', char: 'L', hp: 17, attack: 6, defense: 3},
+    {name: 'Troll', char: 'T', hp: 25, attack: 9, defense: 5},
+    {name: 'Slime', char: 's', hp: 8, attack: 3, defense: 0},
+    {name: 'Orc', char: 'O', hp: 22, attack: 8, defense: 4},
+    {name: 'Vampiro', char: 'V', hp: 20, attack: 7, defense: 3}
+  ];
 
   function addMessage(text) {
-    messagesElem.textContent += text + '\n';
-    messagesElem.scrollTop = messagesElem.scrollHeight;
+    messagesElem.textContent = text;
   }
 
   function generateMap() {
     map = [];
-    for (let y = 0; y < MAP_H; y++) {
+    for(let y=0; y<MAP_H; y++) {
       let row = '';
-      for (let x = 0; x < MAP_W; x++) {
-        if (y === 0 || y === MAP_H-1 || x === 0 || x === MAP_W-1) {
+      for(let x=0; x<MAP_W; x++) {
+        if(y === 0 || y === MAP_H-1 || x === 0 || x === MAP_W-1) {
           row += '#';
         } else {
-          row += (Math.random() < 0.2) ? '#' : '.';
+          row += (Math.random() < 0.15) ? '#' : '.';
         }
       }
       map.push(row);
     }
-    map[1] = '.' + map[1].slice(1, MAP_W - 1) + '.';
   }
 
-  function placeEnemies(count) {
+  function spawnEnemies() {
     enemies = [];
-    let placed = 0;
-    while(placed < count) {
-      let x = 1 + Math.floor(Math.random() * (MAP_W - 2));
-      let y = 1 + Math.floor(Math.random() * (MAP_H - 2));
-      if (map[y][x] === '.' && !(x === player.x && y === player.y) && !enemies.some(e => e.x === x && e.y === y)) {
-        const type = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
-        enemies.push({x, y, hp: type.hp, maxHp: type.hp, attack: type.attack, char: type.char, name: type.name});
-        placed++;
+    let count = 8 + Math.floor(Math.random()*5);
+    while(enemies.length < count) {
+      let x = 1 + Math.floor(Math.random()*(MAP_W-2));
+      let y = 1 + Math.floor(Math.random()*(MAP_H-2));
+      if(map[y][x] === '.' && !isOccupied(x,y)) {
+        let et = enemyTypes[Math.floor(Math.random()*enemyTypes.length)];
+        enemies.push({
+          x, y,
+          hp: et.hp,
+          maxHp: et.hp,
+          attack: et.attack,
+          defense: et.defense,
+          char: et.char,
+          name: et.name
+        });
       }
     }
   }
 
+  function isOccupied(x,y) {
+    if(player && player.x === x && player.y === y) return true;
+    for(const e of enemies) {
+      if(e.x === x && e.y === y && e.hp > 0) return true;
+    }
+    return false;
+  }
+
   function draw() {
     let output = '';
-    for (let y = 0; y < MAP_H; y++) {
-      for (let x = 0; x < MAP_W; x++) {
-        if (player.x === x && player.y === y) {
+    for(let y=0; y<MAP_H; y++) {
+      for(let x=0; x<MAP_W; x++) {
+        if(player.x === x && player.y === y) {
           output += '@';
         } else {
-          let enemy = enemies.find(e => e.x === x && e.y === y && e.hp > 0);
-          if (enemy) output += enemy.char;
+          const enemy = enemies.find(e => e.x === x && e.y === y && e.hp > 0);
+          if(enemy) output += enemy.char;
           else output += map[y][x];
         }
       }
       output += '\n';
     }
     gameElem.textContent = output;
+
     hpElem.textContent = player.hp;
+    maxHpElem.textContent = player.maxHp;
+    attackElem.textContent = player.attack;
+    defenseElem.textContent = player.defense;
     levelElem.textContent = player.level;
-    expElem.textContent = player.exp;
+    timeElem.textContent = gameTime + 's';
   }
 
-  function isWalkable(x,y) {
-    if (x < 0 || x >= MAP_W || y < 0 || y >= MAP_H) return false;
-    if (map[y][x] === '#') return false;
-    if (enemies.some(e => e.x === x && e.y === y && e.hp > 0)) return false;
+  function canWalk(x,y) {
+    if(x<0 || x>=MAP_W || y<0 || y>=MAP_H) return false;
+    if(map[y][x] === '#') return false;
+    if(isOccupied(x,y)) return false;
     return true;
   }
 
-  function attack(attacker, defender) {
-    let damage = attacker.attack;
-    defender.hp -= damage;
-    addMessage(`${attacker === player ? 'Você' : defender === player ? attacker.name : 'Inimigo'} causou ${damage} de dano!`);
-    if (defender.hp <= 0) {
-      addMessage(defender === player ? 'Você morreu! Fim de jogo.' : `${defender.name} morto!`);
-      if (defender !== player) {
-        player.exp += 10;
-        if (player.exp >= player.level * 20) {
-          player.level++;
-          player.maxHp += 10;
-          player.hp = player.maxHp;
-          addMessage(`Você subiu para o nível ${player.level}!`);
-        }
-      }
-    }
+  function damageCalc(attacker, defender) {
+    let damage = attacker.attack - defender.defense;
+    if(damage < 1) damage = 1;
+    return damage;
   }
 
   function enemyTurn() {
-    for (const e of enemies) {
-      if (e.hp <= 0) continue;
-      const dx = player.x - e.x;
-      const dy = player.y - e.y;
-      const dist = Math.abs(dx) + Math.abs(dy);
-
-      if (dist === 1) {
-        attack(e, player);
-        if (player.hp <= 0) break;
+    for(const e of enemies) {
+      if(e.hp <= 0) continue;
+      let dx = player.x - e.x;
+      let dy = player.y - e.y;
+      let dist = Math.abs(dx) + Math.abs(dy);
+      if(dist === 1) {
+        let dmg = damageCalc(e, player);
+        player.hp -= dmg;
+        addMessage(`${e.name} atacou você e causou ${dmg} de dano!`);
+        if(player.hp <= 0) {
+          player.hp = 0;
+          addMessage('Você morreu! Recarregue para jogar novamente.');
+          currentTurn = 'dead';
+          draw();
+          return;
+        }
       } else {
-        let stepX = dx !== 0 ? dx / Math.abs(dx) : 0;
-        let stepY = dy !== 0 ? dy / Math.abs(dy) : 0;
+        let stepX = dx !== 0 ? dx/Math.abs(dx) : 0;
+        let stepY = dy !== 0 ? dy/Math.abs(dy) : 0;
         let nx = e.x + stepX;
         let ny = e.y + stepY;
-        if (isWalkable(nx, ny)) {
+        if(canWalk(nx, ny)) {
           e.x = nx;
           e.y = ny;
         }
       }
     }
+    currentTurn = 'player';
     draw();
   }
 
   function movePlayer(dx, dy) {
-    if (player.hp <= 0) return;
-    const nx = player.x + dx;
-    const ny = player.y + dy;
-    if (map[ny][nx] === '#') {
-      addMessage('Você bateu em uma parede!');
+    if(currentTurn !== 'player' || player.hp <= 0) return;
+    let nx = player.x + dx;
+    let ny = player.y + dy;
+    if(nx<0 || nx>=MAP_W || ny<0 || ny>=MAP_H) {
+      addMessage('Não pode andar para fora do mapa!');
       return;
     }
-    const enemy = enemies.find(e => e.x === nx && e.y === ny && e.hp > 0);
-    if (enemy) {
-      attack(player, enemy);
-      if (enemy.hp <= 0) enemies = enemies.filter(en => en.hp > 0);
-    } else if (isWalkable(nx, ny)) {
+    if(map[ny][nx] === '#') {
+      addMessage('Parede bloqueando o caminho!');
+      return;
+    }
+    let enemy = enemies.find(e => e.x === nx && e.y === ny && e.hp > 0);
+    if(enemy) {
+      let dmg = damageCalc(player, enemy);
+      enemy.hp -= dmg;
+      addMessage(`Você atacou ${enemy.name} e causou ${dmg} de dano!`);
+      if(enemy.hp <= 0) {
+        enemy.hp = 0;
+        addMessage(`Você matou ${enemy.name}!`);
+        player.level += 1;
+        player.maxHp += 5;
+        player.hp = player.maxHp;
+        player.attack += 2;
+        player.defense += 1;
+      }
+    } else if(canWalk(nx, ny)) {
       player.x = nx;
       player.y = ny;
-      addMessage(`Você andou para (${nx},${ny})`);
+      addMessage(`Você andou para (${nx},${ny}).`);
+    } else {
+      addMessage('Espaço ocupado!');
+      return;
     }
+    currentTurn = 'enemy';
     draw();
-    enemyTurn();
+    setTimeout(enemyTurn, 400);
   }
 
+  function useMagic() {
+    if(currentTurn !== 'player' || player.hp <= 0) return;
+    // Mago pode usar magia para atacar inimigos adjacentes com dano fixo 10
+    if(player.class !== 'mage') {
+      addMessage('Somente magos podem usar magia.');
+      return;
+    }
+    let adjacentEnemies = enemies.filter(e => {
+      if(e.hp <= 0) return false;
+      let dx = Math.abs(e.x - player.x);
+      let dy = Math.abs(e.y - player.y);
+      return dx + dy === 1;
+    });
+    if(adjacentEnemies.length === 0) {
+      addMessage('Nenhum inimigo adjacente para usar magia.');
+      return;
+    }
+    let target = adjacentEnemies[0];
+    target.hp -= 10;
+    addMessage(`Você lançou magia no ${target.name}, causando 10 de dano.`);
+    if(target.hp <= 0) {
+      target.hp = 0;
+      addMessage(`Você matou ${target.name} com magia!`);
+      player.level += 1;
+      player.maxHp += 5;
+      player.hp = player.maxHp;
+      player.attack += 2;
+      player.defense += 1;
+    }
+    currentTurn = 'enemy';
+    draw();
+    setTimeout(enemyTurn, 400);
+  }
+
+  function saveGame() {
+    if(!gameStarted) return;
+    const saveData = {player, enemies, map, gameTime, currentTurn};
+    localStorage.setItem('rogueSave', JSON.stringify(saveData));
+    addMessage('Jogo salvo!');
+  }
+
+  function loadGame() {
+    const data = localStorage.getItem('rogueSave');
+    if(!data) {
+      addMessage('Nenhum save encontrado.');
+      return false;
+    }
+    try {
+      const saveData = JSON.parse(data);
+      player = saveData.player;
+      enemies = saveData.enemies;
+      map = saveData.map;
+      gameTime = saveData.gameTime;
+      currentTurn = saveData.currentTurn;
+      gameStarted = true;
+      classSelectionDiv.style.display = 'none';
+      controlsDiv.style.display = 'grid';
+      addMessage('Save carregado! Continue jogando.');
+      draw();
+      return true;
+    } catch(e) {
+      addMessage('Erro ao carregar save.');
+      return false;
+    }
+  }
+
+  function deleteSave() {
+    localStorage.removeItem('rogueSave');
+    addMessage('Save apagado.');
+  }
+
+  document.querySelectorAll('#class-selection button[data-class]').forEach(btn => {
+    btn.onclick = () => {
+      let cls = btn.getAttribute('data-class');
+      let base = classes[cls];
+      player = {
+        x: 2,
+        y: 2,
+        hp: base.hp,
+        maxHp: base.hp,
+        attack: base.attack,
+        defense: base.defense,
+        magicAttack: base.magicAttack,
+        mp: base.mp,
+        level: 1,
+        class: cls
+      };
+      generateMap();
+      spawnEnemies();
+      gameTime = 0;
+      gameStarted = true;
+      currentTurn = 'player';
+      classSelectionDiv.style.display = 'none';
+      controlsDiv.style.display = 'grid';
+      addMessage(`Você escolheu a classe ${cls}!`);
+      draw();
+    };
+  });
+
+  document.getElementById('load-save').onclick = () => {
+    if(loadGame()) return;
+  };
+  document.getElementById('delete-save').onclick = () => {
+    deleteSave();
+  };
+
+  document.getElementById('up').onclick = () => {
+    movePlayer(0, -1);
+  };
+  document.getElementById('down').onclick = () => {
+    movePlayer(0, 1);
+  };
+  document.getElementById('left').onclick = () => {
+    movePlayer(-1, 0);
+  };
+  document.getElementById('right').onclick = () => {
+    movePlayer(1, 0);
+  };
+  document.getElementById('magic').onclick = () => {
+    useMagic();
+  };
+
   window.addEventListener('keydown', e => {
+    if(currentTurn !== 'player' || !gameStarted) return;
     switch(e.key) {
-      case 'ArrowUp': movePlayer(0, -1); break;
-      case 'ArrowDown': movePlayer(0, 1); break;
-      case 'ArrowLeft': movePlayer(-1, 0); break;
-      case 'ArrowRight': movePlayer(1, 0); break;
+      case 'ArrowUp': movePlayer(0,-1); break;
+      case 'ArrowDown': movePlayer(0,1); break;
+      case 'ArrowLeft': movePlayer(-1,0); break;
+      case 'ArrowRight': movePlayer(1,0); break;
+      case 'm': case 'M': useMagic(); break;
+      case 's': case 'S': saveGame(); break;
     }
   });
 
-  generateMap();
-  placeEnemies(10);
-  draw();
-  addMessage('Use as setas para mover. Ataque inimigos andando sobre eles.');
+  setInterval(() => {
+    if(gameStarted && currentTurn !== 'dead') {
+      gameTime++;
+      timeElem.textContent = gameTime + 's';
+    }
+  }, 1000);
+
 })();
 </script>
 
