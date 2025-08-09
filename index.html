@@ -65,6 +65,9 @@
     margin-bottom: 10px;
     overflow-wrap: break-word;
   }
+  .player { color: #0f0; }
+  .enemy { color: #f00; }
+  .item { color: #ff0; }
 </style>
 </head>
 <body>
@@ -103,21 +106,20 @@
   const MAP_WIDTH = 40;
   const MAP_HEIGHT = 20;
 
-  // Mapa será matriz 2D de chars: '#' parede, ' ' chão, '@' player, 'Z' zumbi etc
-
   let map = [];
   let player = {
     x: 0,
     y: 0,
     hp: 100,
     level: 1,
-    items: []
+    items: [],
+    damage: 10
   };
+  let enemies = [];
   let gameTime = 0;
 
   // Função que cria um mapa procedural simples com salas e corredores
   function generateDungeon() {
-    // Inicializa mapa todo com paredes
     map = [];
     for (let y = 0; y < MAP_HEIGHT; y++) {
       let row = [];
@@ -127,7 +129,6 @@
       map.push(row);
     }
 
-    // Cria 4 a 6 salas retangulares aleatórias
     const rooms = [];
     const roomCount = 4 + Math.floor(Math.random() * 3);
 
@@ -137,7 +138,6 @@
       const x = Math.floor(Math.random() * (MAP_WIDTH - w - 1));
       const y = Math.floor(Math.random() * (MAP_HEIGHT - h - 1));
 
-      // Abre espaço para sala
       for (let ry = y; ry < y + h; ry++) {
         for (let rx = x; rx < x + w; rx++) {
           map[ry][rx] = ' ';
@@ -146,43 +146,70 @@
       rooms.push({x, y, w, h});
     }
 
-    // Liga as salas com corredores (horizontal + vertical)
     for (let i = 1; i < rooms.length; i++) {
       const prev = rooms[i - 1];
       const curr = rooms[i];
-      // Centro das salas
       const prevX = Math.floor(prev.x + prev.w/2);
       const prevY = Math.floor(prev.y + prev.h/2);
       const currX = Math.floor(curr.x + curr.w/2);
       const currY = Math.floor(curr.y + curr.h/2);
 
-      // Corredor horizontal
       for (let cx = Math.min(prevX, currX); cx <= Math.max(prevX, currX); cx++) {
         map[prevY][cx] = ' ';
       }
-      // Corredor vertical
       for (let cy = Math.min(prevY, currY); cy <= Math.max(prevY, currY); cy++) {
         map[cy][currX] = ' ';
       }
     }
 
-    // Coloca jogador na sala 0, no centro
+    // Coloca jogador na sala 0
     const startRoom = rooms[0];
     player.x = Math.floor(startRoom.x + startRoom.w / 2);
     player.y = Math.floor(startRoom.y + startRoom.h / 2);
+
+    // Adiciona inimigos e itens
+    enemies = [];
+    const entityCount = 5 + Math.floor(Math.random() * 5); // Entre 5 e 9 entidades
+    
+    for (let i = 0; i < entityCount; i++) {
+      let placed = false;
+      while (!placed) {
+        const rx = Math.floor(Math.random() * MAP_WIDTH);
+        const ry = Math.floor(Math.random() * MAP_HEIGHT);
+        // Coloca inimigo ou item se o espaço estiver vazio e não for a posição do jogador
+        if (map[ry][rx] === ' ' && (rx !== player.x || ry !== player.y)) {
+          // 80% de chance de ser inimigo, 20% de ser item
+          if (Math.random() < 0.8) {
+            enemies.push({ x: rx, y: ry, hp: 20, damage: 5, symbol: 'Z' });
+          } else {
+            map[ry][rx] = 'I'; // Representa um item
+          }
+          placed = true;
+        }
+      }
+    }
   }
 
-  // Desenha o mapa no div em texto ASCII
+  // Desenha o mapa no div em texto ASCII com cores
   function draw() {
     let output = '';
     for (let y = 0; y < MAP_HEIGHT; y++) {
+      let row = '';
       for (let x = 0; x < MAP_WIDTH; x++) {
-        if (x === player.x && y === player.y) output += '@';
-        else output += map[y][x];
+        const entity = enemies.find(e => e.x === x && e.y === y);
+        if (x === player.x && y === player.y) {
+          row += `<span class="player">@</span>`;
+        } else if (entity) {
+          row += `<span class="enemy">${entity.symbol}</span>`;
+        } else if (map[y][x] === 'I') {
+          row += `<span class="item">I</span>`;
+        } else {
+          row += map[y][x];
+        }
       }
-      output += '\n';
+      output += row + '\n';
     }
-    gameContainer.textContent = output;
+    gameContainer.innerHTML = output;
   }
 
   // Atualiza hotbar
@@ -193,26 +220,78 @@
     itemsElem.textContent = player.items.length > 0 ? player.items.join(', ') : 'Nenhum';
   }
 
-  // Checa se pode andar (não andar em parede)
+  // Checa se pode andar (não andar em parede ou em inimigo)
   function canMoveTo(x, y) {
     if (x < 0 || x >= MAP_WIDTH || y < 0 || y >= MAP_HEIGHT) return false;
     if (map[y][x] === '#') return false;
     return true;
   }
 
+  // Lógica de combate
+  function handleCombat(enemy, index) {
+    const playerDamage = player.damage;
+    const enemyDamage = enemy.damage;
+    
+    enemy.hp -= playerDamage;
+    player.hp -= enemyDamage;
+    
+    addMessage(`Você atacou o Zumbi, causando ${playerDamage} de dano!`);
+    addMessage(`O Zumbi te atacou, causando ${enemyDamage} de dano!`);
+    
+    if (enemy.hp <= 0) {
+      addMessage('Você derrotou o Zumbi!');
+      enemies.splice(index, 1); // Remove o inimigo
+    }
+    
+    if (player.hp <= 0) {
+      addMessage('Você morreu...');
+      // Implementar lógica de Game Over
+    }
+  }
+
   // Movimenta o jogador
   function movePlayer(dx, dy) {
     const nx = player.x + dx;
     const ny = player.y + dy;
-    if (canMoveTo(nx, ny)) {
+    
+    const enemyIndex = enemies.findIndex(e => e.x === nx && e.y === ny);
+
+    if (enemyIndex !== -1) {
+      handleCombat(enemies[enemyIndex], enemyIndex);
+    } else if (canMoveTo(nx, ny)) {
       player.x = nx;
       player.y = ny;
-      addMessage(`Você se moveu para (${nx},${ny})`);
+      
+      // Checa se tem um item na nova posição
+      if (map[ny][nx] === 'I') {
+        player.items.push('Poção de Vida');
+        map[ny][nx] = ' '; // Remove o item do mapa
+        addMessage('Você encontrou uma Poção de Vida!');
+      } else {
+        addMessage(`Você se moveu para (${nx},${ny})`);
+      }
     } else {
       addMessage('Não pode andar aí!');
     }
     draw();
     updateHotbar();
+  }
+
+  // Movimenta os inimigos de forma aleatória
+  function moveEnemies() {
+    enemies.forEach(enemy => {
+      const directions = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+      const randomDirection = directions[Math.floor(Math.random() * directions.length)];
+      
+      const nx = enemy.x + randomDirection[0];
+      const ny = enemy.y + randomDirection[1];
+      
+      // Inimigos só podem andar para espaços vazios
+      if (canMoveTo(nx, ny) && (nx !== player.x || ny !== player.y)) {
+        enemy.x = nx;
+        enemy.y = ny;
+      }
+    });
   }
 
   // Exibe mensagem
@@ -236,19 +315,26 @@
     }
   });
 
+  // Loop principal do jogo
+  function gameLoop() {
+    gameTime++;
+    moveEnemies();
+    draw();
+    updateHotbar();
+    if (player.hp > 0) {
+      setTimeout(gameLoop, 1000); // Roda a cada segundo
+    }
+  }
+
   // Inicia jogo
   generateDungeon();
   draw();
   updateHotbar();
-
-  // Tempo
-  setInterval(() => {
-    gameTime++;
-    updateHotbar();
-  }, 1000);
+  gameLoop();
 
 })();
 </script>
 
 </body>
 </html>
+
