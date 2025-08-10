@@ -1,400 +1,396 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<title>RPGLIKE XD</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>RPGLiKe — Rogue-style ASCII</title>
 <style>
-  body {
-    font-family: monospace;
-    background: #111;
-    color: #eee;
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    user-select: none;
-    touch-action: manipulation;
+  body{margin:0;font-family:monospace;background:#060606;color:#eaeaea;display:flex;flex-direction:column;align-items:center;padding:8px}
+  h1{margin:6px 0 10px 0;font-size:18px}
+  #game-container{white-space:pre;font-size:13px;line-height:13px;background:#111;padding:8px;border:3px solid #333;max-width:calc(100vw - 20px);overflow:auto;height:420px}
+  #hotbar{display:flex;gap:12px;margin-top:8px;background:#0b0b0b;padding:8px;border:2px solid #222;width:640px;justify-content:space-between}
+  #msg{width:640px;background:#070707;border:2px solid #222;padding:8px;margin-top:8px;min-height:48px}
+  .player{color:#6f6}
+  .enemy{color:#f66}
+  .item{color:#ffb}
+  .stairs{color:#6cf}
+  .shop{color:#ffdb70}
+  #controls{display:flex;gap:6px;margin-top:8px}
+  .ctl{width:56px;height:44px;background:#222;border:none;color:#fff;font-size:18px;border-radius:6px}
+  @media(max-width:720px){
+    #hotbar,#msg{width:calc(100vw - 20px)}
+    .ctl{width:48px;height:44px}
   }
-  #game-container {
-    white-space: pre;
-    font-size: 14px;
-    line-height: 14px;
-    background: #222;
-    padding: 10px;
-    width: max-content;
-    border: 3px solid #555;
-    margin-bottom: 10px;
-  }
-  #hotbar {
-    display: flex;
-    justify-content: space-around;
-    width: 320px;
-    background: #333;
-    padding: 6px 0;
-    font-size: 14px;
-    border-top: 2px solid #555;
-  }
-  #controls {
-    margin-top: 10px;
-    display: flex;
-    justify-content: center;
-    gap: 10px;
-  }
-  #controls button {
-    background: #555;
-    border: none;
-    color: #eee;
-    font-size: 22px;
-    width: 50px;
-    height: 50px;
-    border-radius: 10px;
-    user-select: none;
-  }
-  #controls button:active {
-    background: #888;
-  }
-  #msg {
-    width: 320px;
-    min-height: 40px;
-    background: #111;
-    color: #afa;
-    font-size: 14px;
-    padding: 5px;
-    border: 2px solid #555;
-    margin-bottom: 10px;
-    overflow-wrap: break-word;
-  }
-  .player { color: #0f0; }
-  .enemy { color: #f00; }
-  .item { color: #ff0; }
-  .stairs { color: #00f; }
 </style>
 </head>
 <body>
 
-<h1>RPGLiKe</h1>
+<h1>RPGLiKe — Rogue-style map (+ - | /)</h1>
 
-<div id="game-container"></div>
+<div id="game-container" tabindex="0"></div>
 
 <div id="hotbar">
-  <div>Vida: <span id="hp">100</span></div>
+  <div>HP: <span id="hp">100</span></div>
   <div>Andar: <span id="floor">1</span></div>
-  <div>Tempo: <span id="time">0s</span></div>
+  <div>Gold: <span id="gold">0</span></div>
   <div>Dano: <span id="damage">10</span></div>
 </div>
 
-<div id="msg"></div>
+<div id="msg">Pressione setas ou use botões. O mapa usa + - | para bordas, . chão, # parede, < escada, T loja.</div>
 
 <div id="controls">
-  <button id="up">▲</button>
-</div>
-<div id="controls">
-  <button id="left">◄</button>
-  <button id="down">▼</button>
-  <button id="right">►</button>
+  <button class="ctl" id="up">▲</button>
+  <button class="ctl" id="left">◄</button>
+  <button class="ctl" id="down">▼</button>
+  <button class="ctl" id="right">►</button>
+  <button class="ctl" id="attack">⚔</button>
 </div>
 
 <script>
 (() => {
-  const gameContainer = document.getElementById('game-container');
-  const hpElem = document.getElementById('hp');
-  const floorElem = document.getElementById('floor');
-  const timeElem = document.getElementById('time');
-  const damageElem = document.getElementById('damage');
-  const msgElem = document.getElementById('msg');
+  const container = document.getElementById('game-container');
+  const hpEl = document.getElementById('hp');
+  const floorEl = document.getElementById('floor');
+  const goldEl = document.getElementById('gold');
+  const dmgEl = document.getElementById('damage');
+  const msgEl = document.getElementById('msg');
 
-  const MAP_WIDTH = 40;
-  const MAP_HEIGHT = 20;
+  const MAP_W = 60;
+  const MAP_H = 22;
   const TOTAL_FLOORS = 5;
 
   let map = [];
-  let player = {
-    x: 0,
-    y: 0,
-    hp: 100,
-    floor: 1,
-    baseDamage: 10
-  };
+  let rooms = [];
   let enemies = [];
-  let gameTime = 0;
+  let items = [];
+  let player = { x:0, y:0, hp:100, maxHp:100, baseDamage:10, floor:1, gold:0 };
   let isGameOver = false;
 
-  // Função que cria um mapa procedural com salas e corredores
-  function generateDungeon() {
-    map = [];
-    for (let y = 0; y < MAP_HEIGHT; y++) {
-      let row = [];
-      for (let x = 0; x < MAP_WIDTH; x++) {
-        row.push('#');
-      }
-      map.push(row);
-    }
+  function rand(a,b){ return Math.floor(Math.random()*(b-a+1))+a; }
 
-    const rooms = [];
-    const roomCount = 4 + Math.floor(Math.random() * 3);
+  function initMapFill(ch='#'){
+    map = Array.from({length:MAP_H}, ()=> Array.from({length:MAP_W}, ()=> ch));
+  }
 
-    for (let i = 0; i < roomCount; i++) {
-      const w = 5 + Math.floor(Math.random() * 6);
-      const h = 4 + Math.floor(Math.random() * 4);
-      const x = Math.floor(Math.random() * (MAP_WIDTH - w - 1));
-      const y = Math.floor(Math.random() * (MAP_HEIGHT - h - 1));
-
-      for (let ry = y; ry < y + h; ry++) {
-        for (let rx = x; rx < x + w; rx++) {
-          map[ry][rx] = ' ';
-        }
-      }
-      rooms.push({x, y, w, h});
-    }
-
-    for (let i = 1; i < rooms.length; i++) {
-      const prev = rooms[i - 1];
-      const curr = rooms[i];
-      const prevX = Math.floor(prev.x + prev.w/2);
-      const prevY = Math.floor(prev.y + prev.h/2);
-      const currX = Math.floor(curr.x + curr.w/2);
-      const currY = Math.floor(curr.y + curr.h/2);
-
-      for (let cx = Math.min(prevX, currX); cx <= Math.max(prevX, currX); cx++) {
-        map[prevY][cx] = ' ';
-      }
-      for (let cy = Math.min(prevY, currY); cy <= Math.max(prevY, currY); cy++) {
-        map[cy][currX] = ' ';
-      }
-    }
-
-    const startRoom = rooms[0];
-    player.x = Math.floor(startRoom.x + startRoom.w / 2);
-    player.y = Math.floor(startRoom.y + startRoom.h / 2);
-
+  // Generate rooms with borders + - | and floor '.' and corridors '.'
+  function generateDungeon(){
+    initMapFill('#');
+    rooms = [];
     enemies = [];
-    const entityCount = 5 + player.floor + Math.floor(Math.random() * 5); // Aumenta a quantidade por andar
+    items = [];
 
-    if (player.floor === TOTAL_FLOORS) {
-      // Adiciona o chefe no último andar
-      let placedBoss = false;
-      while (!placedBoss) {
-        const rx = Math.floor(Math.random() * MAP_WIDTH);
-        const ry = Math.floor(Math.random() * MAP_HEIGHT);
-        if (map[ry][rx] === ' ' && (rx !== player.x || ry !== player.y)) {
-          enemies.push({ x: rx, y: ry, hp: 100, damage: 25, symbol: 'B' });
-          placedBoss = true;
+    const roomCount = 4 + rand(0,3);
+    for(let i=0;i<roomCount;i++){
+      const w = rand(6,12);
+      const h = rand(4,8);
+      const x = rand(1, MAP_W - w - 2);
+      const y = rand(1, MAP_H - h - 2);
+      // carve interior floor '.' and border chars
+      for(let yy=y; yy<y+h; yy++){
+        for(let xx=x; xx<x+w; xx++){
+          // border?
+          if(yy===y && xx===x) map[yy][xx] = '+';
+          else if(yy===y && xx===x+w-1) map[yy][xx] = '+';
+          else if(yy===y+h-1 && xx===x) map[yy][xx] = '+';
+          else if(yy===y+h-1 && xx===x+w-1) map[yy][xx] = '+';
+          else if(yy===y || yy===y+h-1) map[yy][xx] = '-';
+          else if(xx===x || xx===x+w-1) map[yy][xx] = '|';
+          else map[yy][xx] = '.';
         }
       }
-      addMessage(`Você chegou ao último andar! Derrote o Chefe ('B') para vencer!`);
+      rooms.push({x,y,w,h, cx: Math.floor(x + w/2), cy: Math.floor(y + h/2)});
+    }
+
+    // connect centers with corridors (simple L-shaped), carve '.' and add '+' at corridor-room meeting?
+    for(let i=1;i<rooms.length;i++){
+      const a = rooms[i-1], b = rooms[i];
+      const ax=a.cx, ay=a.cy, bx=b.cx, by=b.cy;
+      if(Math.random()<0.5){
+        carveH(ax,bx,ay);
+        carveV(ay,by,bx);
+      } else {
+        carveV(ay,by,ax);
+        carveH(ax,bx,by);
+      }
+    }
+
+    // place player at first room center
+    const start = rooms[0];
+    player.x = start.cx; player.y = start.cy;
+
+    // place stairs or boss
+    if(player.floor === TOTAL_FLOORS){
+      // boss
+      let placed=false;
+      while(!placed){
+        const r = rooms[rand(0,rooms.length-1)];
+        const rx = rand(r.x+1, r.x+r.w-2);
+        const ry = rand(r.y+1, r.y+r.h-2);
+        if(map[ry][rx]==='.' && !(rx===player.x && ry===player.y)){
+          enemies.push({x:rx,y:ry,hp:200,damage:30,symbol:'B',xp:150});
+          placed=true;
+        }
+      }
+      addMsg('Último andar: chefe à espreita!');
     } else {
-      // Adiciona a escada para o próximo andar
-      let placedStairs = false;
-      while (!placedStairs) {
-        const rx = Math.floor(Math.random() * MAP_WIDTH);
-        const ry = Math.floor(Math.random() * MAP_HEIGHT);
-        if (map[ry][rx] === ' ' && (rx !== player.x || ry !== player.y)) {
+      // place stairs '<'
+      let placed=false;
+      while(!placed){
+        const r = rooms[rand(0,rooms.length-1)];
+        const rx = rand(r.x+1, r.x+r.w-2);
+        const ry = rand(r.y+1, r.y+r.h-2);
+        if(map[ry][rx]==='.' && !(rx===player.x && ry===player.y)){
           map[ry][rx] = '<';
-          placedStairs = true;
+          placed=true;
         }
       }
-    }
-
-    // Adiciona inimigos e itens
-    for (let i = 0; i < entityCount; i++) {
-      let placed = false;
-      while (!placed) {
-        const rx = Math.floor(Math.random() * MAP_WIDTH);
-        const ry = Math.floor(Math.random() * MAP_HEIGHT);
-        const isPlayerPos = (rx === player.x && ry === player.y);
-        const isOccupied = map[ry][rx] !== ' ';
-
-        if (map[ry][rx] === ' ' && !isPlayerPos) {
-          // Tipos de inimigos e itens
-          const rand = Math.random();
-          if (rand < 0.6) { // Zumbi
-            enemies.push({ x: rx, y: ry, hp: 20 * player.floor, damage: 5 * player.floor, symbol: 'Z' });
-          } else if (rand < 0.8) { // Esqueleto
-            enemies.push({ x: rx, y: ry, hp: 30 * player.floor, damage: 8 * player.floor, symbol: 'S' });
-          } else if (rand < 0.9) { // Goblin
-            enemies.push({ x: rx, y: ry, hp: 15 * player.floor, damage: 10 * player.floor, symbol: 'G' });
-          } else if (rand < 0.95) { // Poção
-            map[ry][rx] = 'P';
-          } else { // Arma
-            map[ry][rx] = 'W';
+      // place a shop T sometimes
+      if(Math.random()<0.6){
+        let placedT=false;
+        while(!placedT){
+          const r = rooms[rand(0,rooms.length-1)];
+          const rx = rand(r.x+1, r.x+r.w-2);
+          const ry = rand(r.y+1, r.y+r.h-2);
+          if(map[ry][rx]==='.' && !(rx===player.x && ry===player.y)){
+            map[ry][rx] = 'T';
+            placedT=true;
           }
-          placed = true;
         }
+      }
+    }
+
+    // populate enemies and items
+    const cnt = 4 + player.floor + rand(0,4);
+    for(let i=0;i<cnt;i++){
+      let tries=0;
+      while(tries < 400){
+        const rx = rand(1, MAP_W-2), ry = rand(1, MAP_H-2);
+        if(map[ry][rx]==='.' && !(rx===player.x && ry===player.y) && !enemies.find(e=>e.x===rx&&e.y===ry)){
+          const r = Math.random();
+          if(r < 0.6) enemies.push({x:rx,y:ry,hp:20 + 6*player.floor,damage:5 + 1*player.floor,symbol:'Z',xp:12});
+          else if(r < 0.85) enemies.push({x:rx,y:ry,hp:30 + 8*player.floor,damage:8 + 2*player.floor,symbol:'S',xp:18});
+          else {
+            const it = Math.random();
+            if(it < 0.5) items.push({x:rx,y:ry,type:'P'});
+            else if(it < 0.8) items.push({x:rx,y:ry,type:'A'});
+            else items.push({x:rx,y:ry,type:'W'});
+          }
+          break;
+        }
+        tries++;
       }
     }
   }
 
-  // Desenha o mapa no div em texto ASCII com cores
-  function draw() {
-    let output = '';
-    for (let y = 0; y < MAP_HEIGHT; y++) {
-      let row = '';
-      for (let x = 0; x < MAP_WIDTH; x++) {
-        const entity = enemies.find(e => e.x === x && e.y === y);
-        if (x === player.x && y === player.y) {
-          row += `<span class="player">@</span>`;
-        } else if (entity) {
-          row += `<span class="enemy">${entity.symbol}</span>`;
-        } else if (map[y][x] === 'P' || map[y][x] === 'W') {
-          row += `<span class="item">${map[y][x]}</span>`;
-        } else if (map[y][x] === '<') {
-          row += `<span class="stairs"><</span>`;
+  function carveH(x1,x2,y){
+    for(let x=Math.min(x1,x2); x<=Math.max(x1,x2); x++){
+      if(map[y][x] === '#') map[y][x] = '.';
+      else if(map[y][x] === '-' || map[y][x] === '|' || map[y][x] === '+') map[y][x] = '.'; // open the border to corridor
+    }
+  }
+  function carveV(y1,y2,x){
+    for(let y=Math.min(y1,y2); y<=Math.max(y1,y2); y++){
+      if(map[y][x] === '#') map[y][x] = '.';
+      else if(map[y][x] === '-' || map[y][x] === '|' || map[y][x] === '+') map[y][x] = '.';
+    }
+  }
+
+  // draw with spans and styles
+  function draw(){
+    let out = '';
+    for(let y=0;y<MAP_H;y++){
+      for(let x=0;x<MAP_W;x++){
+        const en = enemies.find(e=>e.x===x && e.y===y);
+        const it = items.find(i=>i.x===x && i.y===y);
+        if(player.x===x && player.y===y){
+          out += `<span class="player">@</span>`;
+        } else if(en){
+          out += `<span class="enemy">${en.symbol}</span>`;
+        } else if(it){
+          out += `<span class="item">${it.type}</span>`;
         } else {
-          row += map[y][x];
+          const ch = map[y][x];
+          if(ch === '.') out += '.';
+          else if(ch === '<') out += `<span class="stairs"><</span>`;
+          else if(ch === 'T') out += `<span class="shop">T</span>`;
+          else if(ch === '+' || ch === '-' || ch === '|') out += ch;
+          else out += '#';
         }
       }
-      output += row + '\n';
+      out += '\n';
     }
-    gameContainer.innerHTML = output;
+    container.innerHTML = out;
   }
 
-  // Atualiza hotbar
-  function updateHotbar() {
-    hpElem.textContent = player.hp;
-    floorElem.textContent = player.floor;
-    timeElem.textContent = gameTime + 's';
-    damageElem.textContent = player.baseDamage;
+  function addMsg(txt){ msgEl.textContent = txt; }
+
+  function updateHotbar(){
+    hpEl.textContent = player.hp + ' / ' + player.maxHp;
+    floorEl.textContent = player.floor;
+    goldEl.textContent = player.gold;
+    dmgEl.textContent = player.baseDamage;
   }
 
-  // Checa se pode andar (não andar em parede ou em inimigo)
-  function canMoveTo(x, y) {
-    if (x < 0 || x >= MAP_WIDTH || y < 0 || y >= MAP_HEIGHT) return false;
-    if (map[y][x] === '#') return false;
-    return true;
+  function enemyAt(x,y){ return enemies.find(e=>e.x===x && e.y===y); }
+  function itemAt(x,y){ return items.find(i=>i.x===x && i.y===y); }
+
+  function canWalk(x,y){
+    if(x<0||y<0||x>=MAP_W||y>=MAP_H) return false;
+    const ch = map[y][x];
+    return (ch === '.' || ch === '<' || ch === 'T');
   }
 
-  // Lógica de combate
-  function handleCombat(enemy, index) {
-    const playerDamage = player.baseDamage + Math.floor(Math.random() * 5); // Dano com aleatoriedade
-    const enemyDamage = enemy.damage;
-    
-    enemy.hp -= playerDamage;
-    addMessage(`Você atacou o ${enemy.symbol}, causando ${playerDamage} de dano! (${enemy.hp} HP restantes)`);
-    
-    if (enemy.hp <= 0) {
-      addMessage(`Você derrotou o ${enemy.symbol}!`);
-      enemies.splice(index, 1); // Remove o inimigo
+  function movePlayer(dx,dy){
+    if(isGameOver) return;
+    const nx = player.x + dx, ny = player.y + dy;
+    const en = enemyAt(nx,ny);
+    if(en){
+      // melee attack when bumping
+      const dmg = player.baseDamage + rand(0,4);
+      en.hp -= dmg;
+      addMsg(`Você atacou ${en.symbol} por ${dmg} dano.`);
+      if(en.hp <= 0){
+        killEnemy(en);
+      } else {
+        player.hp -= en.damage;
+        addMsg(`${en.symbol} atacou de volta por ${en.damage}.`);
+        if(player.hp <= 0) gameOver();
+      }
+      updateHotbar();
+      draw();
       return;
     }
-
-    player.hp -= enemyDamage;
-    addMessage(`O ${enemy.symbol} te atacou, causando ${enemyDamage} de dano!`);
-    
-    if (player.hp <= 0) {
-      isGameOver = true;
-      addMessage('Você morreu... Fim de jogo!');
-      // TODO: Adicionar tela de game over
+    if(canWalk(nx,ny)){
+      player.x = nx; player.y = ny;
+      const tile = map[ny][nx];
+      if(tile === '<'){
+        player.floor++;
+        addMsg('Você desceu para o andar ' + player.floor);
+        generateDungeon();
+      } else if(tile === 'T'){
+        openShop();
+      } else {
+        // pick item if any
+        const itIdx = items.findIndex(i=>i.x===nx && i.y===ny);
+        if(itIdx !== -1){
+          const it = items[itIdx];
+          if(it.type === 'P'){ player.hp = Math.min(player.maxHp, player.hp + 30); addMsg('Usou poção: +30 HP'); }
+          if(it.type === 'A'){ player.gold += 0; addMsg('Pegou flechas (simulado)'); }
+          if(it.type === 'W'){ player.baseDamage += 3; addMsg('Pegou arma: +3 dano'); }
+          items.splice(itIdx,1);
+        } else {
+          addMsg(`Andou para (${nx},${ny})`);
+        }
+      }
+      draw(); updateHotbar();
+    } else {
+      addMsg('Não pode andar aí!');
     }
   }
 
-  // Movimenta o jogador
-  function movePlayer(dx, dy) {
-    if (isGameOver) return;
-    
-    const nx = player.x + dx;
-    const ny = player.y + dy;
-    
-    const enemyIndex = enemies.findIndex(e => e.x === nx && e.y === ny);
-
-    if (enemyIndex !== -1) {
-      handleCombat(enemies[enemyIndex], enemyIndex);
-    } else if (canMoveTo(nx, ny)) {
-      player.x = nx;
-      player.y = ny;
-      
-      const tile = map[ny][nx];
-      if (tile === 'P') {
-        player.hp = Math.min(100, player.hp + 25);
-        map[ny][nx] = ' ';
-        addMessage('Você encontrou uma poção e recuperou 25 de vida!');
-      } else if (tile === 'W') {
-        player.baseDamage += 5;
-        map[ny][nx] = ' ';
-        addMessage('Você encontrou uma nova arma e seu dano aumentou!');
-      } else if (tile === '<') {
-        player.floor++;
-        addMessage(`Você desceu para o Andar ${player.floor}!`);
-        generateDungeon();
-      } else {
-        addMessage(`Você se moveu para (${nx},${ny})`);
-      }
-    } else {
-      addMessage('Não pode andar aí!');
+  function killEnemy(en){
+    addMsg(`Você derrotou ${en.symbol}!`);
+    player.gold += rand(3,8);
+    enemies = enemies.filter(e=>e!==en);
+    updateHotbar();
+    if(player.floor === TOTAL_FLOORS && enemies.length === 0){
+      addMsg('Parabéns! Você venceu a masmorra!');
+      isGameOver = true;
     }
-    
-    draw();
+  }
+
+  function openShop(){
+    const choice = prompt("Loja: 1) Poção +30HP (10g)\n2) +Dano (+3) (20g)\nDigite 1 ou 2, Cancel para sair.");
+    if(choice === null) { addMsg('Saiu da loja.'); return; }
+    if(choice === '1'){
+      if(player.gold >= 10){ player.gold -= 10; player.hp = Math.min(player.maxHp, player.hp + 30); addMsg('Comprou poção +30HP'); }
+      else addMsg('Ouro insuficiente.');
+    } else if(choice === '2'){
+      if(player.gold >= 20){ player.gold -= 20; player.baseDamage += 3; addMsg('Comprou melhoria +3 dano'); }
+      else addMsg('Ouro insuficiente.');
+    } else addMsg('Opção inválida.');
     updateHotbar();
   }
 
-  // Movimenta os inimigos de forma aleatória
-  function moveEnemies() {
-    enemies.forEach(enemy => {
-      const directions = [[0, 1], [0, -1], [1, 0], [-1, 0]];
-      const randomDirection = directions[Math.floor(Math.random() * directions.length)];
-      
-      const nx = enemy.x + randomDirection[0];
-      const ny = enemy.y + randomDirection[1];
-      
-      if (canMoveTo(nx, ny) && (nx !== player.x || ny !== player.y)) {
-        enemy.x = nx;
-        enemy.y = ny;
+  function attackAction(){
+    // basic attack: try adjacent tile in direction of arrow last pressed; simple: attack all adjacent enemies (sweeping)
+    let attacked = false;
+    const dirs = [[0,-1],[1,0],[0,1],[-1,0]];
+    for(const d of dirs){
+      const en = enemyAt(player.x + d[0], player.y + d[1]);
+      if(en){
+        const dmg = player.baseDamage + rand(0,4);
+        en.hp -= dmg;
+        addMsg(`Você atacou ${en.symbol} por ${dmg}.`);
+        attacked = true;
+        if(en.hp <= 0) killEnemy(en);
+        else { player.hp -= en.damage; addMsg(`${en.symbol} revidou por ${en.damage}.`); if(player.hp<=0) gameOver(); }
+        break; // attack only one enemy per action
       }
-    });
+    }
+    if(!attacked) addMsg('Nenhum inimigo adjacente para atacar.');
+    updateHotbar(); draw();
   }
 
-  // Exibe mensagem
-  function addMessage(text) {
-    msgElem.textContent = text;
+  // enemy movement
+  function moveEnemies(){
+    for(const en of enemies){
+      if(Math.random() < 0.4) continue;
+      const dirs = [[0,-1],[1,0],[0,1],[-1,0]];
+      const d = dirs[rand(0,3)];
+      const nx = en.x + d[0], ny = en.y + d[1];
+      if(nx === player.x && ny === player.y){
+        player.hp -= en.damage;
+        addMsg(`${en.symbol} atacou você por ${en.damage}!`);
+        if(player.hp <= 0) gameOver();
+      } else if(map[ny] && map[ny][nx] && map[ny][nx] === '.' && !enemyAt(nx,ny)){
+        en.x = nx; en.y = ny;
+      }
+    }
   }
 
-  // Controles botões
-  document.getElementById('up').onclick = () => movePlayer(0, -1);
-  document.getElementById('down').onclick = () => movePlayer(0, 1);
-  document.getElementById('left').onclick = () => movePlayer(-1, 0);
-  document.getElementById('right').onclick = () => movePlayer(1, 0);
+  function gameOver(){
+    addMsg('Você morreu... recarregue para tentar novamente.');
+    isGameOver = true;
+  }
 
-  // Teclado para desktop
-  window.addEventListener('keydown', e => {
-    if (isGameOver) return;
-    switch (e.key) {
-      case 'ArrowUp': movePlayer(0, -1); break;
-      case 'ArrowDown': movePlayer(0, 1); break;
-      case 'ArrowLeft': movePlayer(-1, 0); break;
-      case 'ArrowRight': movePlayer(1, 0); break;
+  // controls
+  document.getElementById('up').onclick = ()=> movePlayer(0,-1);
+  document.getElementById('down').onclick = ()=> movePlayer(0,1);
+  document.getElementById('left').onclick = ()=> movePlayer(-1,0);
+  document.getElementById('right').onclick = ()=> movePlayer(1,0);
+  document.getElementById('attack').onclick = ()=> attackAction();
+
+  window.addEventListener('keydown', e=>{
+    if(isGameOver) return;
+    switch(e.key){
+      case 'ArrowUp': movePlayer(0,-1); break;
+      case 'ArrowDown': movePlayer(0,1); break;
+      case 'ArrowLeft': movePlayer(-1,0); break;
+      case 'ArrowRight': movePlayer(1,0); break;
+      case ' ': attackAction(); break;
+      case 's': // try shop
+      case 'S':
+        if(map[player.y][player.x] === 'T') openShop();
+        else addMsg('Nenhuma loja aqui.');
+        break;
     }
   });
 
-  // Loop principal do jogo
-  function gameLoop() {
-    if (isGameOver) return;
-    gameTime++;
+  // loop
+  function loop(){
+    if(isGameOver) return;
     moveEnemies();
     draw();
     updateHotbar();
-    
-    // Condição de vitória (derrotar o boss no último andar)
-    if (player.floor === TOTAL_FLOORS && enemies.length === 0) {
-      isGameOver = true;
-      addMessage('Parabéns! Você derrotou o Chefe e venceu o jogo!');
-    } else {
-      setTimeout(gameLoop, 1000); // Roda a cada segundo
-    }
+    setTimeout(loop, 900);
   }
 
-  // Inicia o jogo
-  function startGame() {
-    isGameOver = false;
-    player = { x: 0, y: 0, hp: 100, floor: 1, baseDamage: 10 };
-    gameTime = 0;
-    generateDungeon();
-    draw();
-    updateHotbar();
-    gameLoop();
-    addMessage(`Bem-vindo à masmorra! Derrote o Chefe no Andar ${TOTAL_FLOORS} para vencer.`);
-  }
-  
-  startGame();
+  // start
+  generateDungeon();
+  draw();
+  updateHotbar();
+  loop();
 
 })();
 </script>
