@@ -44,6 +44,8 @@
   <button class="ctl" id="down">▼</button>
   <button class="ctl" id="right">►</button>
   <button class="ctl" id="attack">⚔</button>
+  <button class="ctl" id="save">💾</button>
+  <button class="ctl" id="load">📂</button>
 </div>
 
 <script>
@@ -430,6 +432,16 @@
   document.getElementById('left').onclick = ()=> movePlayer(-1,0);
   document.getElementById('right').onclick = ()=> movePlayer(1,0);
   document.getElementById('attack').onclick = ()=> attackAction();
+  document.getElementById('save').onclick = ()=> saveGame();
+  document.getElementById('load').onclick = ()=> {
+    if(loadGame()){
+      draw();
+      updateHotbar();
+      addMsg('Jogo carregado com sucesso!');
+    } else {
+      addMsg('Nenhum jogo salvo encontrado.');
+    }
+  };
 
   window.addEventListener('keydown', e=>{
     if(isGameOver) return;
@@ -443,6 +455,17 @@
       case 'S':
         if(map[player.y][player.x] === 'T') openShop();
         else addMsg('Nenhuma loja aqui.');
+        break;
+      case 'l':
+      case 'L': saveGame(); break;
+      case 'p':
+      case 'P':
+        if(loadGame()){
+          draw();
+          updateHotbar();
+        } else {
+          addMsg('Nenhum jogo salvo encontrado.');
+        }
         break;
     }
   });
