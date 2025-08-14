@@ -1,799 +1,399 @@
-
-Conversa com o Gemini
 <!DOCTYPE html>
-
 <html lang="pt-BR">
-
 <head>
-
 <meta charset="utf-8" />
-
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-
 <title>RPGLiKe — Rogue-style ASCII</title>
-
 <style>
-
-  body{margin:0;font-family:monospace;background:#060606;color:#eaeaea;display:flex;flex-direction:column;align-items:center;padding:8px}
-
-  h1{margin:6px 0 10px 0;font-size:18px}
-
-  #game-container{white-space:pre;font-size:13px;line-height:13px;background:#111;padding:8px;border:3px solid #333;max-width:calc(100vw - 20px);overflow:auto;height:420px}
-
-  #hotbar{display:flex;gap:12px;margin-top:8px;background:#0b0b0b;padding:8px;border:2px solid #222;width:640px;justify-content:space-between}
-
-  #msg{width:640px;background:#070707;border:2px solid #222;padding:8px;margin-top:8px;min-height:48px}
-
-  .player{color:#6f6}
-
-  .enemy{color:#f66}
-
-  .item{color:#ffb}
-
-  .stairs{color:#6cf}
-
-  .shop{color:#ffdb70}
-
-  #controls{display:flex;gap:6px;margin-top:8px}
-
-  .ctl{width:56px;height:44px;background:#222;border:none;color:#fff;font-size:18px;border-radius:6px}
-
-  @media(max-width:720px){
-
-    #hotbar,#msg{width:calc(100vw - 20px)}
-
-    .ctl{width:48px;height:44px}
-
-  }
-
+  body{margin:0;font-family:monospace;background:#060606;color:#eaeaea;display:flex;flex-direction:column;align-items:center;padding:8px}
+  h1{margin:6px 0 10px 0;font-size:18px}
+  #game-container{white-space:pre;font-size:13px;line-height:13px;background:#111;padding:8px;border:3px solid #333;max-width:calc(100vw - 20px);overflow:auto;height:420px}
+  #hotbar{display:flex;gap:12px;margin-top:8px;background:#0b0b0b;padding:8px;border:2px solid #222;width:640px;justify-content:space-between}
+  #msg{width:640px;background:#070707;border:2px solid #222;padding:8px;margin-top:8px;min-height:48px}
+  .player{color:#6f6}
+  .enemy{color:#f66}
+  .item{color:#ffb}
+  .stairs{color:#6cf}
+  .shop{color:#ffdb70}
+  #controls{display:flex;gap:6px;margin-top:8px}
+  .ctl{width:56px;height:44px;background:#222;border:none;color:#fff;font-size:18px;border-radius:6px}
+  @media(max-width:720px){
+    #hotbar,#msg{width:calc(100vw - 20px)}
+    .ctl{width:48px;height:44px}
+  }
 </style>
-
 </head>
-
 <body>
-
-
 
 <h1>RPGLiKe — Rogue-style map (+ - | /)</h1>
 
-
-
 <div id="game-container" tabindex="0"></div>
 
-
-
 <div id="hotbar">
-
-  <div>HP: <span id="hp">100</span></div>
-
-  <div>Andar: <span id="floor">1</span></div>
-
-  <div>Gold: <span id="gold">0</span></div>
-
-  <div>Dano: <span id="damage">10</span></div>
-
+  <div>HP: <span id="hp">100</span></div>
+  <div>Andar: <span id="floor">1</span></div>
+  <div>Gold: <span id="gold">0</span></div>
+  <div>Dano: <span id="damage">10</span></div>
 </div>
-
-
 
 <div id="msg">Pressione setas ou use botões. O mapa usa + - | para bordas, . chão, # parede, < escada, T loja.</div>
 
-
-
 <div id="controls">
-
-  <button class="ctl" id="up">▲</button>
-
-  <button class="ctl" id="left">◄</button>
-
-  <button class="ctl" id="down">▼</button>
-
-  <button class="ctl" id="right">►</button>
-
-  <button class="ctl" id="attack">⚔</button>
-
+  <button class="ctl" id="up">▲</button>
+  <button class="ctl" id="left">◄</button>
+  <button class="ctl" id="down">▼</button>
+  <button class="ctl" id="right">►</button>
+  <button class="ctl" id="attack">⚔</button>
 </div>
 
-
-
 <script>
-
 (() => {
-
-  const container = document.getElementById('game-container');
-
-  const hpEl = document.getElementById('hp');
-
-  const floorEl = document.getElementById('floor');
-
-  const goldEl = document.getElementById('gold');
-
-  const dmgEl = document.getElementById('damage');
-
-  const msgEl = document.getElementById('msg');
-
-
-
-  const MAP_W = 60;
-
-  const MAP_H = 22;
-
-  const TOTAL_FLOORS = 5;
-
-
-
-  let map = [];
-
-  let rooms = [];
-
-  let enemies = [];
-
-  let items = [];
-
-  let player = { x:0, y:0, hp:100, maxHp:100, baseDamage:10, floor:1, gold:0 };
-
-  let isGameOver = false;
-
-
-
-  function rand(a,b){ return Math.floor(Math.random()*(b-a+1))+a; }
-
-
-
-  function initMapFill(ch='#'){
-
-    map = Array.from({length:MAP_H}, ()=> Array.from({length:MAP_W}, ()=> ch));
-
-  }
-
-
-
-  // Generate rooms with borders + - | and floor '.' and corridors '.'
-
-  function generateDungeon(){
-
-    initMapFill('#');
-
-    rooms = [];
-
-    enemies = [];
-
-    items = [];
-
-
-
-    const roomCount = 4 + rand(0,3);
-
-    for(let i=0;i<roomCount;i++){
-
-      const w = rand(6,12);
-
-      const h = rand(4,8);
-
-      const x = rand(1, MAP_W - w - 2);
-
-      const y = rand(1, MAP_H - h - 2);
-
-      // carve interior floor '.' and border chars
-
-      for(let yy=y; yy<y+h; yy++){
-
-        for(let xx=x; xx<x+w; xx++){
-
-          // border?
-
-          if(yy===y && xx===x) map[yy][xx] = '+';
-
-          else if(yy===y && xx===x+w-1) map[yy][xx] = '+';
-
-          else if(yy===y+h-1 && xx===x) map[yy][xx] = '+';
-
-          else if(yy===y+h-1 && xx===x+w-1) map[yy][xx] = '+';
-
-          else if(yy===y || yy===y+h-1) map[yy][xx] = '-';
-
-          else if(xx===x || xx===x+w-1) map[yy][xx] = '|';
-
-          else map[yy][xx] = '.';
-
-        }
-
-      }
-
-      rooms.push({x,y,w,h, cx: Math.floor(x + w/2), cy: Math.floor(y + h/2)});
-
-    }
-
-
-
-    // connect centers with corridors (simple L-shaped), carve '.' and add '+' at corridor-room meeting?
-
-    for(let i=1;i<rooms.length;i++){
-
-      const a = rooms[i-1], b = rooms[i];
-
-      const ax=a.cx, ay=a.cy, bx=b.cx, by=b.cy;
-
-      if(Math.random()<0.5){
-
-        carveH(ax,bx,ay);
-
-        carveV(ay,by,bx);
-
-      } else {
-
-        carveV(ay,by,ax);
-
-        carveH(ax,bx,by);
-
-      }
-
-    }
-
-
-
-    // place player at first room center
-
-    const start = rooms[0];
-
-    player.x = start.cx; player.y = start.cy;
-
-
-
-    // place stairs or boss
-
-    if(player.floor === TOTAL_FLOORS){
-
-      // boss
-
-      let placed=false;
-
-      while(!placed){
-
-        const r = rooms[rand(0,rooms.length-1)];
-
-        const rx = rand(r.x+1, r.x+r.w-2);
-
-        const ry = rand(r.y+1, r.y+r.h-2);
-
-        if(map[ry][rx]==='.' && !(rx===player.x && ry===player.y)){
-
-          enemies.push({x:rx,y:ry,hp:200,damage:30,symbol:'B',xp:150});
-
-          placed=true;
-
-        }
-
-      }
-
-      addMsg('Último andar: chefe à espreita!');
-
-    } else {
-
-      // place stairs '<'
-
-      let placed=false;
-
-      while(!placed){
-
-        const r = rooms[rand(0,rooms.length-1)];
-
-        const rx = rand(r.x+1, r.x+r.w-2);
-
-        const ry = rand(r.y+1, r.y+r.h-2);
-
-        if(map[ry][rx]==='.' && !(rx===player.x && ry===player.y)){
-
-          map[ry][rx] = '<';
-
-          placed=true;
-
-        }
-
-      }
-
-      // place a shop T sometimes
-
-      if(Math.random()<0.6){
-
-        let placedT=false;
-
-        while(!placedT){
-
-          const r = rooms[rand(0,rooms.length-1)];
-
-          const rx = rand(r.x+1, r.x+r.w-2);
-
-          const ry = rand(r.y+1, r.y+r.h-2);
-
-          if(map[ry][rx]==='.' && !(rx===player.x && ry===player.y)){
-
-            map[ry][rx] = 'T';
-
-            placedT=true;
-
-          }
-
-        }
-
-      }
-
-    }
-
-
-
-    // populate enemies and items
-
-    const cnt = 4 + player.floor + rand(0,4);
-
-    for(let i=0;i<cnt;i++){
-
-      let tries=0;
-
-      while(tries < 400){
-
-        const rx = rand(1, MAP_W-2), ry = rand(1, MAP_H-2);
-
-        if(map[ry][rx]==='.' && !(rx===player.x && ry===player.y) && !enemies.find(e=>e.x===rx&&e.y===ry)){
-
-          const r = Math.random();
-
-          if(r < 0.6) enemies.push({x:rx,y:ry,hp:20 + 6*player.floor,damage:5 + 1*player.floor,symbol:'Z',xp:12});
-
-          else if(r < 0.85) enemies.push({x:rx,y:ry,hp:30 + 8*player.floor,damage:8 + 2*player.floor,symbol:'S',xp:18});
-
-          else {
-
-            const it = Math.random();
-
-            if(it < 0.5) items.push({x:rx,y:ry,type:'P'});
-
-            else if(it < 0.8) items.push({x:rx,y:ry,type:'A'});
-
-            else items.push({x:rx,y:ry,type:'W'});
-
-          }
-
-          break;
-
-        }
-
-        tries++;
-
-      }
-
-    }
-
-  }
-
-
-
-  function carveH(x1,x2,y){
-
-    for(let x=Math.min(x1,x2); x<=Math.max(x1,x2); x++){
-
-      if(map[y][x] === '#') map[y][x] = '.';
-
-      else if(map[y][x] === '-' || map[y][x] === '|' || map[y][x] === '+') map[y][x] = '.'; // open the border to corridor
-
-    }
-
-  }
-
-  function carveV(y1,y2,x){
-
-    for(let y=Math.min(y1,y2); y<=Math.max(y1,y2); y++){
-
-      if(map[y][x] === '#') map[y][x] = '.';
-
-      else if(map[y][x] === '-' || map[y][x] === '|' || map[y][x] === '+') map[y][x] = '.';
-
-    }
-
-  }
-
-
-
-  // draw with spans and styles
-
-  function draw(){
-
-    let out = '';
-
-    for(let y=0;y<MAP_H;y++){
-
-      for(let x=0;x<MAP_W;x++){
-
-        const en = enemies.find(e=>e.x===x && e.y===y);
-
-        const it = items.find(i=>i.x===x && i.y===y);
-
-        if(player.x===x && player.y===y){
-
-          out += `<span class="player">@</span>`;
-
-        } else if(en){
-
-          out += `<span class="enemy">${en.symbol}</span>`;
-
-        } else if(it){
-
-          out += `<span class="item">${it.type}</span>`;
-
-        } else {
-
-          const ch = map[y][x];
-
-          if(ch === '.') out += '.';
-
-          else if(ch === '<') out += `<span class="stairs"><</span>`;
-
-          else if(ch === 'T') out += `<span class="shop">T</span>`;
-
-          else if(ch === '+' || ch === '-' || ch === '|') out += ch;
-
-          else out += '#';
-
-        }
-
-      }
-
-      out += '\n';
-
-    }
-
-    container.innerHTML = out;
-
-  }
-
-
-
-  function addMsg(txt){ msgEl.textContent = txt; }
-
-
-
-  function updateHotbar(){
-
-    hpEl.textContent = player.hp + ' / ' + player.maxHp;
-
-    floorEl.textContent = player.floor;
-
-    goldEl.textContent = player.gold;
-
-    dmgEl.textContent = player.baseDamage;
-
-  }
-
-
-
-  function enemyAt(x,y){ return enemies.find(e=>e.x===x && e.y===y); }
-
-  function itemAt(x,y){ return items.find(i=>i.x===x && i.y===y); }
-
-
-
-  function canWalk(x,y){
-
-    if(x<0||y<0||x>=MAP_W||y>=MAP_H) return false;
-
-    const ch = map[y][x];
-
-    return (ch === '.' || ch === '<' || ch === 'T');
-
-  }
-
-
-
-  function movePlayer(dx,dy){
-
-    if(isGameOver) return;
-
-    const nx = player.x + dx, ny = player.y + dy;
-
-    const en = enemyAt(nx,ny);
-
-    if(en){
-
-      // melee attack when bumping
-
-      const dmg = player.baseDamage + rand(0,4);
-
-      en.hp -= dmg;
-
-      addMsg(`Você atacou ${en.symbol} por ${dmg} dano.`);
-
-      if(en.hp <= 0){
-
-        killEnemy(en);
-
-      } else {
-
-        player.hp -= en.damage;
-
-        addMsg(`${en.symbol} atacou de volta por ${en.damage}.`);
-
-        if(player.hp <= 0) gameOver();
-
-      }
-
-      updateHotbar();
-
-      draw();
-
-      return;
-
-    }
-
-    if(canWalk(nx,ny)){
-
-      player.x = nx; player.y = ny;
-
-      const tile = map[ny][nx];
-
-      if(tile === '<'){
-
-        player.floor++;
-
-        addMsg('Você desceu para o andar ' + player.floor);
-
-        generateDungeon();
-
-      } else if(tile === 'T'){
-
-        openShop();
-
-      } else {
-
-        // pick item if any
-
-        const itIdx = items.findIndex(i=>i.x===nx && i.y===ny);
-
-        if(itIdx !== -1){
-
-          const it = items[itIdx];
-
-          if(it.type === 'P'){ player.hp = Math.min(player.maxHp, player.hp + 30); addMsg('Usou poção: +30 HP'); }
-
-          if(it.type === 'A'){ player.gold += 0; addMsg('Pegou flechas (simulado)'); }
-
-          if(it.type === 'W'){ player.baseDamage += 3; addMsg('Pegou arma: +3 dano'); }
-
-          items.splice(itIdx,1);
-
-        } else {
-
-          addMsg(`Andou para (${nx},${ny})`);
-
-        }
-
-      }
-
-      draw(); updateHotbar();
-
-    } else {
-
-      addMsg('Não pode andar aí!');
-
-    }
-
-  }
-
-
-
-  function killEnemy(en){
-
-    addMsg(`Você derrotou ${en.symbol}!`);
-
-    player.gold += rand(3,8);
-
-    enemies = enemies.filter(e=>e!==en);
-
-    updateHotbar();
-
-    if(player.floor === TOTAL_FLOORS && enemies.length === 0){
-
-      addMsg('Parabéns! Você venceu a masmorra!');
-
-      isGameOver = true;
-
-    }
-
-  }
-
-
-
-  function openShop(){
-
-    const choice = prompt("Loja: 1) Poção +30HP (10g)\n2) +Dano (+3) (20g)\nDigite 1 ou 2, Cancel para sair.");
-
-    if(choice === null) { addMsg('Saiu da loja.'); return; }
-
-    if(choice === '1'){
-
-      if(player.gold >= 10){ player.gold -= 10; player.hp = Math.min(player.maxHp, player.hp + 30); addMsg('Comprou poção +30HP'); }
-
-      else addMsg('Ouro insuficiente.');
-
-    } else if(choice === '2'){
-
-      if(player.gold >= 20){ player.gold -= 20; player.baseDamage += 3; addMsg('Comprou melhoria +3 dano'); }
-
-      else addMsg('Ouro insuficiente.');
-
-    } else addMsg('Opção inválida.');
-
-    updateHotbar();
-
-  }
-
-
-
-  function attackAction(){
-
-    // basic attack: try adjacent tile in direction of arrow last pressed; simple: attack all adjacent enemies (sweeping)
-
-    let attacked = false;
-
-    const dirs = [[0,-1],[1,0],[0,1],[-1,0]];
-
-    for(const d of dirs){
-
-      const en = enemyAt(player.x + d[0], player.y + d[1]);
-
-      if(en){
-
-        const dmg = player.baseDamage + rand(0,4);
-
-        en.hp -= dmg;
-
-        addMsg(`Você atacou ${en.symbol} por ${dmg}.`);
-
-        attacked = true;
-
-        if(en.hp <= 0) killEnemy(en);
-
-        else { player.hp -= en.damage; addMsg(`${en.symbol} revidou por ${en.damage}.`); if(player.hp<=0) gameOver(); }
-
-        break; // attack only one enemy per action
-
-      }
-
-    }
-
-    if(!attacked) addMsg('Nenhum inimigo adjacente para atacar.');
-
-    updateHotbar(); draw();
-
-  }
-
-
-
-  // enemy movement
-
-  function moveEnemies(){
-
-    for(const en of enemies){
-
-      if(Math.random() < 0.4) continue;
-
-      const dirs = [[0,-1],[1,0],[0,1],[-1,0]];
-
-      const d = dirs[rand(0,3)];
-
-      const nx = en.x + d[0], ny = en.y + d[1];
-
-      if(nx === player.x && ny === player.y){
-
-        player.hp -= en.damage;
-
-        addMsg(`${en.symbol} atacou você por ${en.damage}!`);
-
-        if(player.hp <= 0) gameOver();
-
-      } else if(map[ny] && map[ny][nx] && map[ny][nx] === '.' && !enemyAt(nx,ny)){
-
-        en.x = nx; en.y = ny;
-
-      }
-
-    }
-
-  }
-
-
-
-  function gameOver(){
-
-    addMsg('Você morreu... recarregue para tentar novamente.');
-
-    isGameOver = true;
-
-  }
-
-
-
-  // controls
-
-  document.getElementById('up').onclick = ()=> movePlayer(0,-1);
-
-  document.getElementById('down').onclick = ()=> movePlayer(0,1);
-
-  document.getElementById('left').onclick = ()=> movePlayer(-1,0);
-
-  document.getElementById('right').onclick = ()=> movePlayer(1,0);
-
-  document.getElementById('attack').onclick = ()=> attackAction();
-
-
-
-  window.addEventListener('keydown', e=>{
-
-    if(isGameOver) return;
-
-    switch(e.key){
-
-      case 'ArrowUp': movePlayer(0,-1); break;
-
-      case 'ArrowDown': movePlayer(0,1); break;
-
-      case 'ArrowLeft': movePlayer(-1,0); break;
-
-      case 'ArrowRight': movePlayer(1,0); break;
-
-      case ' ': attackAction(); break;
-
-      case 's': // try shop
-
-      case 'S':
-
-        if(map[player.y][player.x] === 'T') openShop();
-
-        else addMsg('Nenhuma loja aqui.');
-
-        break;
-
-    }
-
-  });
-
-
-
-  // loop
-
-  function loop(){
-
-    if(isGameOver) return;
-
-    moveEnemies();
-
-    draw();
-
-    updateHotbar();
-
-    setTimeout(loop, 900);
-
-  }
-
-
-
-  // start
-
-  generateDungeon();
-
-  draw();
-
-  updateHotbar();
-
-  loop();
-
-
+  const container = document.getElementById('game-container');
+  const hpEl = document.getElementById('hp');
+  const floorEl = document.getElementById('floor');
+  const goldEl = document.getElementById('gold');
+  const dmgEl = document.getElementById('damage');
+  const msgEl = document.getElementById('msg');
+
+  const MAP_W = 60;
+  const MAP_H = 22;
+  const TOTAL_FLOORS = 5;
+
+  let map = [];
+  let rooms = [];
+  let enemies = [];
+  let items = [];
+  let player = { x:0, y:0, hp:100, maxHp:100, baseDamage:10, floor:1, gold:0 };
+  let isGameOver = false;
+
+  function rand(a,b){ return Math.floor(Math.random()*(b-a+1))+a; }
+
+  function initMapFill(ch='#'){
+    map = Array.from({length:MAP_H}, ()=> Array.from({length:MAP_W}, ()=> ch));
+  }
+
+  // Generate rooms with borders + - | and floor '.' and corridors '.'
+  function generateDungeon(){
+    initMapFill('#');
+    rooms = [];
+    enemies = [];
+    items = [];
+
+    const roomCount = 4 + rand(0,3);
+    for(let i=0;i<roomCount;i++){
+      const w = rand(6,12);
+      const h = rand(4,8);
+      const x = rand(1, MAP_W - w - 2);
+      const y = rand(1, MAP_H - h - 2);
+      // carve interior floor '.' and border chars
+      for(let yy=y; yy<y+h; yy++){
+        for(let xx=x; xx<x+w; xx++){
+          // border?
+          if(yy===y && xx===x) map[yy][xx] = '+';
+          else if(yy===y && xx===x+w-1) map[yy][xx] = '+';
+          else if(yy===y+h-1 && xx===x) map[yy][xx] = '+';
+          else if(yy===y+h-1 && xx===x+w-1) map[yy][xx] = '+';
+          else if(yy===y || yy===y+h-1) map[yy][xx] = '-';
+          else if(xx===x || xx===x+w-1) map[yy][xx] = '|';
+          else map[yy][xx] = '.';
+        }
+      }
+      rooms.push({x,y,w,h, cx: Math.floor(x + w/2), cy: Math.floor(y + h/2)});
+    }
+
+    // connect centers with corridors (simple L-shaped), carve '.' and add '+' at corridor-room meeting?
+    for(let i=1;i<rooms.length;i++){
+      const a = rooms[i-1], b = rooms[i];
+      const ax=a.cx, ay=a.cy, bx=b.cx, by=b.cy;
+      if(Math.random()<0.5){
+        carveH(ax,bx,ay);
+        carveV(ay,by,bx);
+      } else {
+        carveV(ay,by,ax);
+        carveH(ax,bx,by);
+      }
+    }
+
+    // place player at first room center
+    const start = rooms[0];
+    player.x = start.cx; player.y = start.cy;
+
+    // place stairs or boss
+    if(player.floor === TOTAL_FLOORS){
+      // boss
+      let placed=false;
+      while(!placed){
+        const r = rooms[rand(0,rooms.length-1)];
+        const rx = rand(r.x+1, r.x+r.w-2);
+        const ry = rand(r.y+1, r.y+r.h-2);
+        if(map[ry][rx]==='.' && !(rx===player.x && ry===player.y)){
+          enemies.push({x:rx,y:ry,hp:200,damage:30,symbol:'B',xp:150});
+          placed=true;
+        }
+      }
+      addMsg('Último andar: chefe à espreita!');
+    } else {
+      // place stairs '<'
+      let placed=false;
+      while(!placed){
+        const r = rooms[rand(0,rooms.length-1)];
+        const rx = rand(r.x+1, r.x+r.w-2);
+        const ry = rand(r.y+1, r.y+r.h-2);
+        if(map[ry][rx]==='.' && !(rx===player.x && ry===player.y)){
+          map[ry][rx] = '<';
+          placed=true;
+        }
+      }
+      // place a shop T sometimes
+      if(Math.random()<0.6){
+        let placedT=false;
+        while(!placedT){
+          const r = rooms[rand(0,rooms.length-1)];
+          const rx = rand(r.x+1, r.x+r.w-2);
+          const ry = rand(r.y+1, r.y+r.h-2);
+          if(map[ry][rx]==='.' && !(rx===player.x && ry===player.y)){
+            map[ry][rx] = 'T';
+            placedT=true;
+          }
+        }
+      }
+    }
+
+    // populate enemies and items
+    const cnt = 4 + player.floor + rand(0,4);
+    for(let i=0;i<cnt;i++){
+      let tries=0;
+      while(tries < 400){
+        const rx = rand(1, MAP_W-2), ry = rand(1, MAP_H-2);
+        if(map[ry][rx]==='.' && !(rx===player.x && ry===player.y) && !enemies.find(e=>e.x===rx&&e.y===ry)){
+          const r = Math.random();
+          if(r < 0.6) enemies.push({x:rx,y:ry,hp:20 + 6*player.floor,damage:5 + 1*player.floor,symbol:'Z',xp:12});
+          else if(r < 0.85) enemies.push({x:rx,y:ry,hp:30 + 8*player.floor,damage:8 + 2*player.floor,symbol:'S',xp:18});
+          else {
+            const it = Math.random();
+            if(it < 0.5) items.push({x:rx,y:ry,type:'P'});
+            else if(it < 0.8) items.push({x:rx,y:ry,type:'A'});
+            else items.push({x:rx,y:ry,type:'W'});
+          }
+          break;
+        }
+        tries++;
+      }
+    }
+  }
+
+  function carveH(x1,x2,y){
+    for(let x=Math.min(x1,x2); x<=Math.max(x1,x2); x++){
+      if(map[y][x] === '#') map[y][x] = '.';
+      else if(map[y][x] === '-' || map[y][x] === '|' || map[y][x] === '+') map[y][x] = '.'; // open the border to corridor
+    }
+  }
+  function carveV(y1,y2,x){
+    for(let y=Math.min(y1,y2); y<=Math.max(y1,y2); y++){
+      if(map[y][x] === '#') map[y][x] = '.';
+      else if(map[y][x] === '-' || map[y][x] === '|' || map[y][x] === '+') map[y][x] = '.';
+    }
+  }
+
+  // draw with spans and styles
+  function draw(){
+    let out = '';
+    for(let y=0;y<MAP_H;y++){
+      for(let x=0;x<MAP_W;x++){
+        const en = enemies.find(e=>e.x===x && e.y===y);
+        const it = items.find(i=>i.x===x && i.y===y);
+        if(player.x===x && player.y===y){
+          out += `<span class="player">@</span>`;
+        } else if(en){
+          out += `<span class="enemy">${en.symbol}</span>`;
+        } else if(it){
+          out += `<span class="item">${it.type}</span>`;
+        } else {
+          const ch = map[y][x];
+          if(ch === '.') out += '.';
+          else if(ch === '<') out += `<span class="stairs"><</span>`;
+          else if(ch === 'T') out += `<span class="shop">T</span>`;
+          else if(ch === '+' || ch === '-' || ch === '|') out += ch;
+          else out += '#';
+        }
+      }
+      out += '\n';
+    }
+    container.innerHTML = out;
+  }
+
+  function addMsg(txt){ msgEl.textContent = txt; }
+
+  function updateHotbar(){
+    hpEl.textContent = player.hp + ' / ' + player.maxHp;
+    floorEl.textContent = player.floor;
+    goldEl.textContent = player.gold;
+    dmgEl.textContent = player.baseDamage;
+  }
+
+  function enemyAt(x,y){ return enemies.find(e=>e.x===x && e.y===y); }
+  function itemAt(x,y){ return items.find(i=>i.x===x && i.y===y); }
+
+  function canWalk(x,y){
+    if(x<0||y<0||x>=MAP_W||y>=MAP_H) return false;
+    const ch = map[y][x];
+    return (ch === '.' || ch === '<' || ch === 'T');
+  }
+
+  function movePlayer(dx,dy){
+    if(isGameOver) return;
+    const nx = player.x + dx, ny = player.y + dy;
+    const en = enemyAt(nx,ny);
+    if(en){
+      // melee attack when bumping
+      const dmg = player.baseDamage + rand(0,4);
+      en.hp -= dmg;
+      addMsg(`Você atacou ${en.symbol} por ${dmg} dano.`);
+      if(en.hp <= 0){
+        killEnemy(en);
+      } else {
+        player.hp -= en.damage;
+        addMsg(`${en.symbol} atacou de volta por ${en.damage}.`);
+        if(player.hp <= 0) gameOver();
+      }
+      updateHotbar();
+      draw();
+      return;
+    }
+    if(canWalk(nx,ny)){
+      player.x = nx; player.y = ny;
+      const tile = map[ny][nx];
+      if(tile === '<'){
+        player.floor++;
+        addMsg('Você desceu para o andar ' + player.floor);
+        generateDungeon();
+      } else if(tile === 'T'){
+        openShop();
+      } else {
+        // pick item if any
+        const itIdx = items.findIndex(i=>i.x===nx && i.y===ny);
+        if(itIdx !== -1){
+          const it = items[itIdx];
+          if(it.type === 'P'){ player.hp = Math.min(player.maxHp, player.hp + 30); addMsg('Usou poção: +30 HP'); }
+          if(it.type === 'A'){ player.gold += 0; addMsg('Pegou flechas (simulado)'); }
+          if(it.type === 'W'){ player.baseDamage += 3; addMsg('Pegou arma: +3 dano'); }
+          items.splice(itIdx,1);
+        } else {
+          addMsg(`Andou para (${nx},${ny})`);
+        }
+      }
+      draw(); updateHotbar();
+    } else {
+      addMsg('Não pode andar aí!');
+    }
+  }
+
+  function killEnemy(en){
+    addMsg(`Você derrotou ${en.symbol}!`);
+    player.gold += rand(3,8);
+    enemies = enemies.filter(e=>e!==en);
+    updateHotbar();
+    if(player.floor === TOTAL_FLOORS && enemies.length === 0){
+      addMsg('Parabéns! Você venceu a masmorra!');
+      isGameOver = true;
+    }
+  }
+
+  function openShop(){
+    const choice = prompt("Loja: 1) Poção +30HP (10g)\n2) +Dano (+3) (20g)\nDigite 1 ou 2, Cancel para sair.");
+    if(choice === null) { addMsg('Saiu da loja.'); return; }
+    if(choice === '1'){
+      if(player.gold >= 10){ player.gold -= 10; player.hp = Math.min(player.maxHp, player.hp + 30); addMsg('Comprou poção +30HP'); }
+      else addMsg('Ouro insuficiente.');
+    } else if(choice === '2'){
+      if(player.gold >= 20){ player.gold -= 20; player.baseDamage += 3; addMsg('Comprou melhoria +3 dano'); }
+      else addMsg('Ouro insuficiente.');
+    } else addMsg('Opção inválida.');
+    updateHotbar();
+  }
+
+  function attackAction(){
+    // basic attack: try adjacent tile in direction of arrow last pressed; simple: attack all adjacent enemies (sweeping)
+    let attacked = false;
+    const dirs = [[0,-1],[1,0],[0,1],[-1,0]];
+    for(const d of dirs){
+      const en = enemyAt(player.x + d[0], player.y + d[1]);
+      if(en){
+        const dmg = player.baseDamage + rand(0,4);
+        en.hp -= dmg;
+        addMsg(`Você atacou ${en.symbol} por ${dmg}.`);
+        attacked = true;
+        if(en.hp <= 0) killEnemy(en);
+        else { player.hp -= en.damage; addMsg(`${en.symbol} revidou por ${en.damage}.`); if(player.hp<=0) gameOver(); }
+        break; // attack only one enemy per action
+      }
+    }
+    if(!attacked) addMsg('Nenhum inimigo adjacente para atacar.');
+    updateHotbar(); draw();
+  }
+
+  // enemy movement
+  function moveEnemies(){
+    for(const en of enemies){
+      if(Math.random() < 0.4) continue;
+      const dirs = [[0,-1],[1,0],[0,1],[-1,0]];
+      const d = dirs[rand(0,3)];
+      const nx = en.x + d[0], ny = en.y + d[1];
+      if(nx === player.x && ny === player.y){
+        player.hp -= en.damage;
+        addMsg(`${en.symbol} atacou você por ${en.damage}!`);
+        if(player.hp <= 0) gameOver();
+      } else if(map[ny] && map[ny][nx] && map[ny][nx] === '.' && !enemyAt(nx,ny)){
+        en.x = nx; en.y = ny;
+      }
+    }
+  }
+
+  function gameOver(){
+    addMsg('Você morreu... recarregue para tentar novamente.');
+    isGameOver = true;
+  }
+
+  // controls
+  document.getElementById('up').onclick = ()=> movePlayer(0,-1);
+  document.getElementById('down').onclick = ()=> movePlayer(0,1);
+  document.getElementById('left').onclick = ()=> movePlayer(-1,0);
+  document.getElementById('right').onclick = ()=> movePlayer(1,0);
+  document.getElementById('attack').onclick = ()=> attackAction();
+
+  window.addEventListener('keydown', e=>{
+    if(isGameOver) return;
+    switch(e.key){
+      case 'ArrowUp': movePlayer(0,-1); break;
+      case 'ArrowDown': movePlayer(0,1); break;
+      case 'ArrowLeft': movePlayer(-1,0); break;
+      case 'ArrowRight': movePlayer(1,0); break;
+      case ' ': attackAction(); break;
+      case 's': // try shop
+      case 'S':
+        if(map[player.y][player.x] === 'T') openShop();
+        else addMsg('Nenhuma loja aqui.');
+        break;
+    }
+  });
+
+  // loop
+  function loop(){
+    if(isGameOver) return;
+    moveEnemies();
+    draw();
+    updateHotbar();
+    setTimeout(loop, 900);
+  }
+
+  // start
+  generateDungeon();
+  draw();
+  updateHotbar();
+  loop();
 
 })();
-
 </script>
 
-
-
 </body>
-
 </html>
