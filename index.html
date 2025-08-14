@@ -58,6 +58,19 @@
   #controls button:active {
     background: #888;
   }
+  #action-buttons {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+  }
+  #action-buttons button {
+    background: #444;
+    border: 2px solid #666;
+    color: #eee;
+    padding: 8px 16px;
+    font-size: 14px;
+    cursor: pointer;
+  }
   #msg {
     width: 320px;
     min-height: 40px;
@@ -69,11 +82,6 @@
     margin-bottom: 10px;
     overflow-wrap: break-word;
   }
-  .player { color: #0f0; }
-  .enemy { color: #f00; }
-  .item { color: #ff0; }
-  .stairs { color: #00f; }
-  .city-symbol { color: #ccc; }
 </style>
 </head>
 <body>
@@ -103,6 +111,11 @@
   <button id="right">►</button>
 </div>
 
+<div id="action-buttons">
+  <button id="save-btn">Salvar</button>
+  <button id="load-btn">Carregar</button>
+</div>
+
 <script>
 (() => {
   const gameContainer = document.getElementById('game-container');
@@ -115,6 +128,8 @@
   const damageElem = document.getElementById('damage');
   const defenseElem = document.getElementById('defense');
   const msgElem = document.getElementById('msg');
+  const saveBtn = document.getElementById('save-btn');
+  const loadBtn = document.getElementById('load-btn');
 
   const MAP_WIDTH = 40;
   const MAP_HEIGHT = 20;
@@ -142,24 +157,20 @@
   };
   let currentScene = SCENE.CITY;
 
-  // Definição de inimigos com suas estatísticas e XP
   const enemyTypes = {
-    'Z': { hp: 20, damage: 5, xp: 5, gold: 5 },
-    'S': { hp: 30, damage: 8, xp: 8, gold: 8 },
-    'G': { hp: 15, damage: 10, xp: 12, gold: 12 },
-    'A': { hp: 10, damage: 6, xp: 6, gold: 6 },
-    'B': { hp: 100, damage: 25, xp: 50, gold: 50 },
-    'D': { hp: 80, damage: 15, xp: 30, gold: 30 }
+    'Z': { damage: 5, xp: 5, gold: 5 },
+    'S': { damage: 8, xp: 8, gold: 8 },
+    'G': { damage: 10, xp: 12, gold: 12 },
+    'A': { damage: 6, xp: 6, gold: 6 },
+    'D': { damage: 15, xp: 30, gold: 30 }
   };
   
-  // Definição de itens para compra
   const shopItems = {
-      'P': { name: 'Poção de Vida', cost: 10, effect: { type: 'hp', value: 25 } },
       'W': { name: 'Espada', cost: 20, effect: { type: 'damage', value: 5 } },
+      'P': { name: 'Poção de Vida', cost: 10, effect: { type: 'hp', value: 25 } },
       'A': { name: 'Armadura', cost: 15, effect: { type: 'defense', value: 3 } }
   };
 
-  // Funções de salvamento e carregamento
   function saveGame() {
     localStorage.setItem('rpglike_save', JSON.stringify({
       player,
@@ -167,6 +178,7 @@
       map,
       currentScene
     }));
+    addMessage('Jogo salvo com sucesso!');
   }
 
   function loadGame() {
@@ -180,10 +192,10 @@
       addMessage('Jogo carregado com sucesso!');
       return true;
     }
+    addMessage('Nenhum jogo salvo encontrado.');
     return false;
   }
 
-  // Função para subir de nível
   function checkLevelUp() {
     while (player.xp >= player.xpToNextLevel) {
       player.level++;
@@ -196,7 +208,6 @@
     }
   }
 
-  // Função que cria um mapa procedural com salas e corredores
   function generateDungeon() {
     map = [];
     for (let y = 0; y < MAP_HEIGHT; y++) {
@@ -209,7 +220,6 @@
 
     const rooms = [];
     const roomCount = 4 + Math.floor(Math.random() * 3);
-
     for (let i = 0; i < roomCount; i++) {
       const w = 5 + Math.floor(Math.random() * 6);
       const h = 4 + Math.floor(Math.random() * 4);
@@ -230,7 +240,6 @@
       const prevY = Math.floor(prev.y + prev.h/2);
       const currX = Math.floor(curr.x + curr.w/2);
       const currY = Math.floor(curr.y + curr.h/2);
-
       for (let cx = Math.min(prevX, currX); cx <= Math.max(prevX, currX); cx++) map[prevY][cx] = ' ';
       for (let cy = Math.min(prevY, currY); cy <= Math.max(prevY, currY); cy++) map[cy][currX] = ' ';
     }
@@ -242,7 +251,6 @@
     enemies = [];
     const entityCount = 5 + player.floor + Math.floor(Math.random() * 5);
     
-    // Adiciona a escada de saída para a cidade
     let placedStairs = false;
     while (!placedStairs) {
       const rx = Math.floor(Math.random() * MAP_WIDTH);
@@ -253,7 +261,6 @@
       }
     }
     
-    // Adiciona a escada para o próximo andar
     let placedNextStairs = false;
     while (!placedNextStairs) {
       const rx = Math.floor(Math.random() * MAP_WIDTH);
@@ -264,21 +271,6 @@
       }
     }
 
-    if (player.floor > 0 && player.floor % 5 === 0) { // Boss a cada 5 andares
-      let placedBoss = false;
-      while (!placedBoss) {
-        const rx = Math.floor(Math.random() * MAP_WIDTH);
-        const ry = Math.floor(Math.random() * MAP_HEIGHT);
-        if (map[ry][rx] === ' ' && (rx !== player.x || ry !== player.y)) {
-          enemies.push({ x: rx, y: ry, ...enemyTypes['B'] });
-          map[ry][rx] = ' '; // O inimigo é desenhado por cima
-          placedBoss = true;
-        }
-      }
-      addMessage(`Você chegou a um andar de chefe! Derrote o Chefe ('B') para prosseguir!`);
-    }
-
-    // Adiciona inimigos
     for (let i = 0; i < entityCount; i++) {
       let placed = false;
       while (!placed) {
@@ -287,12 +279,16 @@
         const isPlayerPos = (rx === player.x && ry === player.y);
         if (map[ry][rx] === ' ' && !isPlayerPos) {
           const rand = Math.random();
-          const enemySymbol = rand < 0.3 ? 'Z' : (rand < 0.5 ? 'S' : (rand < 0.7 ? 'G' : 'A'));
+          let enemySymbol = 'Z';
+          if (rand > 0.8) enemySymbol = 'S';
+          else if (rand > 0.6) enemySymbol = 'G';
+          else if (rand > 0.4) enemySymbol = 'A';
+          else if (rand > 0.2) enemySymbol = 'D';
+
           const enemyStats = enemyTypes[enemySymbol];
           enemies.push({ 
               x: rx, 
               y: ry, 
-              hp: enemyStats.hp * player.floor, 
               damage: enemyStats.damage * player.floor, 
               xp: enemyStats.xp,
               gold: enemyStats.gold,
@@ -310,47 +306,40 @@
     for (let y = 0; y < MAP_HEIGHT; y++) {
       map.push(Array(MAP_WIDTH).fill(' '));
     }
-    // Desenha as construções da cidade
+    
     for (let x = 5; x < 15; x++) for (let y = 5; y < 10; y++) map[y][x] = '#';
     for (let x = 20; x < 30; x++) for (let y = 5; y < 10; y++) map[y][x] = '#';
     for (let x = 5; x < 15; x++) for (let y = 12; y < 17; y++) map[y][x] = '#';
     
-    // NPC e lojas
-    map[7][8] = 'N'; // NPC
-    map[14][8] = 'W'; // Loja de Armas
-    map[7][24] = 'P'; // Loja de Poções
-    map[14][24] = 'A'; // Loja de Armaduras
+    map[7][8] = 'N'; 
+    map[14][8] = '1'; 
+    map[7][24] = '2'; 
+    map[14][24] = '3'; 
     
-    // Escada para a masmorra
     map[17][20] = '>';
     
     player.x = 20;
     player.y = 17;
     enemies = [];
-    addMessage('Você está na cidade. Fale com o NPC (N) ou entre nas lojas.');
+    addMessage('Você está na cidade. Fale com o NPC (N) ou entre nas lojas (1, 2, 3).');
   }
 
   function draw() {
     let output = '';
     for (let y = 0; y < MAP_HEIGHT; y++) {
-      let row = '';
       for (let x = 0; x < MAP_WIDTH; x++) {
         const entity = enemies.find(e => e.x === x && e.y === y);
         if (x === player.x && y === player.y) {
-          row += `<span class="player">@</span>`;
+          output += '@';
         } else if (entity) {
-          row += `<span class="enemy">${entity.symbol}</span>`;
-        } else if (map[y][x] === '<' || map[y][x] === '>') {
-          row += `<span class="stairs">${map[y][x]}</span>`;
-        } else if (currentScene === SCENE.CITY && (map[y][x] === 'N' || map[y][x] === 'W' || map[y][x] === 'P' || map[y][x] === 'A')) {
-          row += `<span class="city-symbol">${map[y][x]}</span>`;
+          output += entity.symbol;
         } else {
-          row += map[y][x];
+          output += map[y][x];
         }
       }
-      output += row + '\n';
+      output += '\n';
     }
-    gameContainer.innerHTML = output;
+    gameContainer.textContent = output;
   }
 
   function updateHotbar() {
@@ -370,22 +359,9 @@
     return true;
   }
 
-  function handleCombat(enemy, index) {
-    const playerDamage = Math.max(0, player.baseDamage - enemy.defense + Math.floor(Math.random() * 5));
-    const enemyDamage = Math.max(0, enemy.damage - player.defense + Math.floor(Math.random() * 3));
+  function handleCombat(enemy) {
+    const enemyDamage = Math.max(0, enemy.damage - player.defense);
     
-    enemy.hp -= playerDamage;
-    addMessage(`Você atacou o ${enemy.symbol}, causando ${playerDamage} de dano! (${enemy.hp} HP restantes)`);
-    
-    if (enemy.hp <= 0) {
-      addMessage(`Você derrotou o ${enemy.symbol}!`);
-      player.xp += enemy.xp;
-      player.gold += enemy.gold;
-      enemies.splice(index, 1);
-      checkLevelUp();
-      return;
-    }
-
     player.hp -= enemyDamage;
     addMessage(`O ${enemy.symbol} te atacou, causando ${enemyDamage} de dano!`);
     
@@ -402,10 +378,10 @@
     const nx = player.x + dx;
     const ny = player.y + dy;
     
-    const enemyIndex = enemies.findIndex(e => e.x === nx && e.y === ny);
+    const enemy = enemies.find(e => e.x === nx && e.y === ny);
 
-    if (enemyIndex !== -1) {
-      handleCombat(enemies[enemyIndex], enemyIndex);
+    if (enemy) {
+      handleCombat(enemy);
     } else if (canMoveTo(nx, ny)) {
       player.x = nx;
       player.y = ny;
@@ -425,13 +401,7 @@
           }
       } else { // Cidade
           if (tile === 'N') {
-              addMessage("Olá aventureiro! O mundo lá fora é perigoso. Se prepare e boa sorte!");
-          } else if (tile === 'W') {
-              buyItem(shopItems['W']);
-          } else if (tile === 'P') {
-              buyItem(shopItems['P']);
-          } else if (tile === 'A') {
-              buyItem(shopItems['A']);
+              addMessage("Olá aventureiro! Tenho um bom pressentimento sobre você. Lembre-se, 1 é para armas, 2 para poções, e 3 para armaduras. Use o ouro que você ganha da masmorra para comprar!");
           } else if (tile === '>') {
               player.floor = 1;
               addMessage('Você entrou na masmorra...');
@@ -447,24 +417,6 @@
     saveGame();
     draw();
     updateHotbar();
-  }
-
-  function buyItem(item) {
-      if (player.gold >= item.cost) {
-          player.gold -= item.cost;
-          if (item.effect.type === 'hp') {
-              player.hp = Math.min(player.maxHp, player.hp + item.effect.value);
-              addMessage(`Você comprou uma ${item.name} e recuperou ${item.effect.value} de vida!`);
-          } else if (item.effect.type === 'damage') {
-              player.baseDamage += item.effect.value;
-              addMessage(`Você comprou uma ${item.name} e seu dano aumentou em ${item.effect.value}!`);
-          } else if (item.effect.type === 'defense') {
-              player.defense += item.effect.value;
-              addMessage(`Você comprou uma ${item.name} e sua defesa aumentou em ${item.effect.value}!`);
-          }
-      } else {
-          addMessage(`Você não tem ouro suficiente para comprar ${item.name}! Precisa de ${item.cost} de ouro.`);
-      }
   }
 
   function moveEnemies() {
@@ -486,15 +438,46 @@
     msgElem.textContent = text;
   }
 
+  function buyItem(item) {
+      if (player.gold >= item.cost) {
+          player.gold -= item.cost;
+          if (item.effect.type === 'hp') {
+              player.hp = Math.min(player.maxHp, player.hp + item.effect.value);
+              addMessage(`Você comprou uma ${item.name} e recuperou ${item.effect.value} de vida!`);
+          } else if (item.effect.type === 'damage') {
+              player.baseDamage += item.effect.value;
+              addMessage(`Você comprou uma ${item.name} e seu dano aumentou em ${item.effect.value}!`);
+          } else if (item.effect.type === 'defense') {
+              player.defense += item.effect.value;
+              addMessage(`Você comprou uma ${item.name} e sua defesa aumentou em ${item.effect.value}!`);
+          }
+      } else {
+          addMessage(`Você não tem ouro suficiente para comprar ${item.name}! Precisa de ${item.cost} de ouro.`);
+      }
+  }
+
   // Controles botões
   document.getElementById('up').onclick = () => movePlayer(0, -1);
   document.getElementById('down').onclick = () => movePlayer(0, 1);
   document.getElementById('left').onclick = () => movePlayer(-1, 0);
   document.getElementById('right').onclick = () => movePlayer(1, 0);
 
-  // Teclado para desktop
+  saveBtn.onclick = saveGame;
+  loadBtn.onclick = () => {
+    if(loadGame()) {
+        draw();
+        updateHotbar();
+    }
+  };
+
   window.addEventListener('keydown', e => {
     if (isGameOver) return;
+    if (currentScene === SCENE.CITY) {
+        if (e.key === '1') { buyItem(shopItems['W']); }
+        if (e.key === '2') { buyItem(shopItems['P']); }
+        if (e.key === '3') { buyItem(shopItems['A']); }
+    }
+    
     switch (e.key) {
       case 'ArrowUp': movePlayer(0, -1); break;
       case 'ArrowDown': movePlayer(0, 1); break;
@@ -503,7 +486,6 @@
     }
   });
 
-  // Loop principal do jogo
   function gameLoop() {
     if (isGameOver) return;
     if (currentScene === SCENE.DUNGEON) {
@@ -511,13 +493,12 @@
     }
     draw();
     updateHotbar();
-    setTimeout(gameLoop, 500); // Roda a cada 500ms para um movimento mais fluido
+    setTimeout(gameLoop, 500);
   }
 
-  // Inicia o jogo
   function startGame() {
+    isGameOver = false;
     if (!loadGame()) {
-      isGameOver = false;
       player = {
         x: 0,
         y: 0,
