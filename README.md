@@ -1,7 +1,7 @@
 # RPGLiKe — Rogue-style ASCII
 
 ![RPGLiKe Screenshot](https://i.imgur.com/your-image-url-here.png)
-*Substitua o URL acima por um print do seu jogo!*
+
 
 Um jogo simples de exploração de masmorras estilo *rogue-like*, desenvolvido em JavaScript puro. Explore andares gerados proceduralmente, lute contra monstros, colete ouro e aprimore seu personagem.
 
