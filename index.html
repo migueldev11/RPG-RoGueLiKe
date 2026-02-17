@@ -1,534 +1,398 @@
-<!DOCTYPE html><html lang="pt-BR">
+<!DOCTYPE html>
+<html lang="pt-BR">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>RPGLiKe — Rogue-style ASCII (XP + Flechas)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>RPGLiKe — Guardian Edition</title>
 <style>
-  :root{--bg:#060606;--fg:#eaeaea;--panel:#0b0b0b;--panel2:#070707;--border:#222;--grid:#111}
-  body{margin:0;font-family:monospace;background:var(--bg);color:var(--fg);display:flex;flex-direction:column;align-items:center;padding:8px}
-  h1{margin:6px 0 10px 0;font-size:18px}
-  #game-container{white-space:pre;font-size:13px;line-height:13px;background:var(--grid);padding:8px;border:3px solid #333;max-width:calc(100vw - 20px);overflow:auto;height:460px}
-  #hotbar{display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;background:var(--panel);padding:8px;border:2px solid var(--border);width:860px;justify-content:space-between}
-  #msg{width:860px;background:var(--panel2);border:2px solid var(--border);padding:8px;margin-top:8px;min-height:48px}
-  .player{color:#6f6}
-  .enemy{color:#f66}
-  .enemy2{color:#ff8080}
-  .enemy3{color:#ff9d4d}
-  .enemy4{color:#a8a8ff}
-  .enemy5{color:#ff66d4}
-  .item{color:#ffb}
-  .stairs{color:#6cf}
-  .shop{color:#ffdb70}
-  .proj{color:#9cf}
-  #controls{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
-  .ctl{width:64px;height:46px;background:#222;border:none;color:#fff;font-size:18px;border-radius:8px}
-  .ctl:active{transform:translateY(1px)}
-  @media(max-width:920px){
-    #hotbar,#msg{width:calc(100vw - 20px)}
-    .ctl{width:54px;height:46px}
+  :root {
+    --bg: #050505; --panel: #111; --border: #222;
+    --player: #4f4; --enemy: #f55; --item: #ff5;
+    --stairs: #5ff; --text: #888;
   }
+  * { box-sizing: border-box; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: 'Courier New', Courier, monospace;
+    height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  /* --- UI BAR --- */
+  #game-ui { display: flex; flex-direction: column; width: 100%; height: 100%; padding: 5px; }
+  #stats-bar {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
+    background: var(--panel); border: 1px solid var(--border);
+    padding: 8px; font-size: 10px; margin-bottom: 5px;
+  }
+  .stat-val { display: block; font-weight: bold; color: #fff; font-size: 11px; }
+  #msg-log {
+    height: 40px; background: #000; padding: 4px; font-size: 10px;
+    border: 1px solid #1a1a1a; margin-bottom: 5px; overflow: hidden;
+  }
+
+  /* --- MAPA --- */
+  #map-view {
+    flex: 1; background: #000; border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
+    position: relative;
+  }
+  #ascii-map { white-space: pre; line-height: 1.1; font-size: 3vw; font-weight: bold; }
+  @media (min-width: 600px) { #ascii-map { font-size: 14px; } }
+
+  .p { color: var(--player); } .e { color: var(--enemy); }
+  .i { color: var(--item); } .s { color: var(--stairs); }
+  .w { color: #222; } .f { color: #0a0a0a; }
+
+  /* --- SHOP --- */
+  #shop-ui {
+    position: absolute; inset: 10px; background: rgba(5,5,5,0.98);
+    border: 1px solid #444; z-index: 100; padding: 15px;
+    display: none; flex-direction: column;
+  }
+  .shop-grid { display: grid; gap: 8px; }
+  .shop-item { background: #151515; border: 1px solid #333; padding: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 11px; }
+  .buy-btn { background: #440; color: #ff5; border: none; padding: 4px 8px; font-weight: bold; }
+
+  /* --- CONTROLES EM CRUZ --- */
+  #controls {
+    height: 190px; display: grid; grid-template-columns: 1.2fr 1fr; gap: 10px;
+    padding: 10px; background: var(--panel); border-top: 1px solid var(--border);
+  }
+  .dpad { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); width: 140px; height: 140px; }
+  .btn { background: #1a1a1a; border: 1px solid #333; color: #eee; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 22px; width: 45px; height: 45px; }
+  #b-u { grid-area: 1 / 2; } #b-l { grid-area: 2 / 1; } #b-r { grid-area: 2 / 3; } #b-d { grid-area: 3 / 2; }
+  
+  .actions { display: flex; flex-direction: column; gap: 6px; justify-content: center; }
+  .btn-act { width: 100%; height: 40px; font-size: 10px; font-weight: bold; background: #1a1a1a; border: 1px solid #333; border-left: 4px solid #fff; color: #fff; }
+
+  .shake { animation: shake 0.15s ease-in-out; }
+  @keyframes shake { 0%, 100% { transform: translate(0,0); } 25% { transform: translate(-4px, 2px); } 75% { transform: translate(4px, -2px); } }
 </style>
-<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
-<body><h1>RPGLiKe — Rogue (+ - |) com Nível/XP e Flechas</h1><div id="game-container" tabindex="0" aria-label="Mapa do jogo"></div><div id="hotbar" aria-live="polite">
-  <div>HP: <span id="hp">100</span></div>
-  <div>DEF: <span id="def">0</span></div>
-  <div>Dano: <span id="damage">10</span></div>
-  <div>Lvl: <span id="level">1</span></div>
-  <div>XP: <span id="xp">0</span>/<span id="nextxp">50</span></div>
-  <div>Andar: <span id="floor">1</span></div>
-  <div>Gold: <span id="gold">0</span></div>
-  <div>Flechas: <span id="arrows">0</span> (Dir: <span id="facing">→</span>)</div>
-</div><div id="msg">Setas movimentam. Espaço = ataque. F = atirar flecha. O mapa usa + - | bordas, . chão, # rocha, &lt; escada, T loja, * flecha.</div><div id="controls">
-  <button class="ctl" id="up" title="Cima">▲</button>
-  <button class="ctl" id="left" title="Esquerda">◄</button>
-  <button class="ctl" id="down" title="Baixo">▼</button>
-  <button class="ctl" id="right" title="Direita">►</button>
-  <button class="ctl" id="attack" title="Atacar (Espaço)">⚔</button>
-  <button class="ctl" id="shoot" title="Atirar (F)">➳</button>
-</div><script>
-(() => {
-  const container = document.getElementById('game-container');
-  const hpEl = document.getElementById('hp');
-  const defEl = document.getElementById('def');
-  const floorEl = document.getElementById('floor');
-  const goldEl = document.getElementById('gold');
-  const dmgEl = document.getElementById('damage');
-  const msgEl = document.getElementById('msg');
-  const lvlEl = document.getElementById('level');
-  const xpEl = document.getElementById('xp');
-  const nextXpEl = document.getElementById('nextxp');
-  const arrowsEl = document.getElementById('arrows');
-  const facingEl = document.getElementById('facing');
+<body>
 
-  const MAP_W = 60;
-  const MAP_H = 24;
+<div id="scr-game" class="screen">
+  <div id="game-ui">
+    <div id="stats-bar">
+      <div>HP <span id="u-hp" class="stat-val">0</span></div>
+      <div>ATK/DEF <span id="u-atkdef" class="stat-val">0/0</span></div>
+      <div>ANDAR <span id="u-flr" class="stat-val">1</span></div>
+      <div>GOLD <span id="u-gld" class="stat-val">0</span></div>
+    </div>
+    <div id="msg-log">Sinta o medo da escuridão...</div>
+    
+    <div id="map-view">
+      <div id="ascii-map"></div>
+      <div id="shop-ui">
+        <h2 style="margin:0 0 10px 0; color:var(--item); font-size:16px;">MERCADOR DE ALMAS</h2>
+        <div id="shop-items" class="shop-grid"></div>
+        <button onclick="game.closeShop()" style="margin-top:15px; background:#333; border:none; color:#fff; padding:10px;">FECHAR</button>
+      </div>
+    </div>
 
-  let map = [];
-  let rooms = [];
-  let enemies = [];
-  let items = [];
-  let projectiles = []; // {x,y,dx,dy,damage}
+    <div id="controls">
+      <div class="dpad">
+        <button class="btn" id="b-u">▲</button>
+        <button class="btn" id="b-l">◄</button>
+        <button class="btn" id="b-r">►</button>
+        <button class="btn" id="b-d">▼</button>
+      </div>
+      <div class="actions">
+        <button class="btn btn-act" id="b-atk" style="border-left-color:var(--enemy)">⚔ ATACAR</button>
+        <button class="btn btn-act" id="b-dash" style="border-left-color:#5ff">⚡ DASH (<span id="u-dsh">0</span>)</button>
+        <button class="btn btn-act" id="b-sho" style="border-left-color:#ff5">➳ TIRO (<span id="u-arw">0</span>)</button>
+      </div>
+    </div>
+  </div>
+</div>
 
-  const DIRS = {
-    UP: [0,-1,'↑'], RIGHT:[1,0,'→'], DOWN:[0,1,'↓'], LEFT:[-1,0,'←']
-  };
+<script>
+const game = {
+  W: 36, H: 18, visRange: 5,
+  player: { hp: 100, mHp: 100, dmg: 10, def: 1, lvl: 1, xp: 0, nXp: 50, flr: 1, gld: 0, arw: 8, dash: 0, x: 0, y: 0, f: [1, 0] },
+  enemies: [], items: [], projs: [], map: [], explored: [],
+  
+  enemyPool: [
+    { s: 'r', n: 'Rato', hp: 15, dmg: 5, xp: 10, g: [2,5], minF: 1 },
+    { s: 'Z', n: 'Zumbi', hp: 35, dmg: 8, xp: 18, g: [4,8], minF: 1 },
+    { s: 'G', n: 'Goblin', hp: 25, dmg: 12, xp: 22, g: [6,12], minF: 4 },
+    { s: 'S', n: 'Esqueleto', hp: 45, dmg: 14, xp: 30, g: [8,15], minF: 7 },
+    { s: 'M', n: 'Mago', hp: 40, dmg: 20, xp: 40, g: [12,20], minF: 10 },
+    { s: 'O', n: 'Ogro', hp: 90, dmg: 25, xp: 60, g: [20,40], minF: 12 },
+    { s: 'Ω', n: 'GUARDIÃO', hp: 300, dmg: 35, xp: 500, g: [100,200], isBoss: true }
+  ],
 
-  const enemyDefs = [
-    // base stats; serão escalados por andar
-    {symbol:'Z', name:'Zumbi',   hp:24,  damage:6,  xp:14, gold:[3,8], cls:'enemy'},
-    {symbol:'S', name:'Slime',   hp:34,  damage:9,  xp:20, gold:[4,9], cls:'enemy2'},
-    {symbol:'G', name:'Goblin',  hp:20,  damage:7,  xp:18, gold:[6,12], cls:'enemy3'},
-    {symbol:'O', name:'Ogro',    hp:55,  damage:15, xp:35, gold:[10,18], cls:'enemy4'},
-    {symbol:'M', name:'Mago',    hp:26,  damage:11, xp:26, gold:[7,14], cls:'enemy5'},
-    {symbol:'K', name:'Cavaleiro',hp:45, damage:12, xp:30, gold:[9,16], cls:'enemy4', armor:2}
-  ];
+  shopInventory: [
+    { n: "Cura Total", c: 20, f: () => { game.player.hp = game.player.mHp; } },
+    { n: "Flechas x8", c: 12, f: () => { game.player.arw += 8; } },
+    { n: "Afiagem (ATK+4)", c: 30, f: () => { game.player.dmg += 4; } },
+    { n: "Placa (DEF+2)", c: 40, f: () => { game.player.def += 2; } },
+    { n: "Treino (XP+50)", c: 25, f: () => { game.gainXp(50); } }
+  ],
 
-  function scaleStat(base, floor){
-    const mult = 1 + (floor-1)*0.18; // escala suave por andar
-    return Math.floor(base * mult);
-  }
+  init() {
+    const b = (id, fn) => { 
+        const el = document.getElementById(id);
+        el.onmousedown = el.ontouchstart = (e) => { e.preventDefault(); fn(); };
+    };
+    b('b-u', () => this.handleIn('w')); b('b-d', () => this.handleIn('s'));
+    b('b-l', () => this.handleIn('a')); b('b-r', () => this.handleIn('d'));
+    b('b-atk', () => this.handleIn(' ')); b('b-sho', () => this.handleIn('f'));
+    b('b-dash', () => this.handleIn('q'));
+    window.onkeydown = (e) => this.handleIn(e.key);
+    this.genFloor();
+    setInterval(() => this.loop(), 200);
+  },
 
-  let player = {
-    x:0,y:0,
-    hp:100,maxHp:100,
-    baseDamage:10, defense:0,
-    level:1, xp:0, nextXp:50,
-    floor:1, gold:0,
-    arrows:3,
-    facing: DIRS.RIGHT // direção atual para flechas
-  };
-
-  let isGameOver = false;
-
-  function rand(a,b){ return Math.floor(Math.random()*(b-a+1))+a; }
-  function chance(p){ return Math.random() < p; }
-
-  function initMapFill(ch='#'){
-    map = Array.from({length:MAP_H}, ()=> Array.from({length:MAP_W}, ()=> ch));
-  }
-
-  // ======= Geração de dungeon =======
-  function generateDungeon(){
-    initMapFill('#');
-    rooms = []; enemies = []; items = []; projectiles = [];
-
-    const roomCount = 5 + rand(0,3);
-    for(let i=0;i<roomCount;i++){
-      const w = rand(6,13);
-      const h = rand(4,8);
-      const x = rand(1, MAP_W - w - 2);
-      const y = rand(1, MAP_H - h - 2);
-      for(let yy=y; yy<y+h; yy++){
-        for(let xx=x; xx<x+w; xx++){
-          if(yy===y && xx===x) map[yy][xx] = '+';
-          else if(yy===y && xx===x+w-1) map[yy][xx] = '+';
-          else if(yy===y+h-1 && xx===x) map[yy][xx] = '+';
-          else if(yy===y+h-1 && xx===x+w-1) map[yy][xx] = '+';
-          else if(yy===y || yy===y+h-1) map[yy][xx] = '-';
-          else if(xx===x || xx===x+w-1) map[yy][xx] = '|';
-          else map[yy][xx] = '.';
-        }
-      }
-      rooms.push({x,y,w,h, cx: Math.floor(x + w/2), cy: Math.floor(y + h/2)});
-    }
-
-    // corredores L
-    for(let i=1;i<rooms.length;i++){
-      const a = rooms[i-1], b = rooms[i];
-      const ax=a.cx, ay=a.cy, bx=b.cx, by=b.cy;
-      if(Math.random()<0.5){ carveH(ax,bx,ay); carveV(ay,by,bx); }
-      else { carveV(ay,by,ax); carveH(ax,bx,by); }
-    }
-
-    // player inicia no centro da 1ª sala
-    const start = rooms[0];
-    player.x = start.cx; player.y = start.cy;
-
-    // escada para infinito
-    placeRandomOnFloor('<');
-
-    // loja ocasional
-    if(chance(0.6)) placeRandomOnFloor('T');
-
-    // spawns
-    const cnt = 5 + Math.floor(player.floor*0.8) + rand(0,3);
-    for(let i=0;i<cnt;i++) trySpawn();
-
-    // alguns itens soltos
-    const itemCnt = 3 + rand(0,2);
-    for(let i=0;i<itemCnt;i++) trySpawnItem();
-  }
-
-  function placeRandomOnFloor(ch){
-    let placed=false, tries=0;
-    while(!placed && tries<500){
-      const r = rooms[rand(0,rooms.length-1)];
-      const rx = rand(r.x+1, r.x+r.w-2);
-      const ry = rand(r.y+1, r.y+r.h-2);
-      if(map[ry][rx]==='.' && !(rx===player.x && ry===player.y)){
-        map[ry][rx] = ch; placed=true;
-      }
-      tries++;
-    }
-  }
-
-  function trySpawn(){
-    let tries=0;
-    while(tries<400){
-      const rx = rand(1, MAP_W-2), ry = rand(1, MAP_H-2);
-      if(map[ry][rx]==='.' && !(rx===player.x && ry===player.y) && !enemyAt(rx,ry)){
-        const def = enemyDefs[rand(0, enemyDefs.length-1)];
-        const e = {
-          x:rx, y:ry,
-          symbol:def.symbol, name:def.name, cls:def.cls,
-          hp: scaleStat(def.hp, player.floor),
-          damage: scaleStat(def.damage, player.floor),
-          armor: def.armor? Math.floor(def.armor + (player.floor-1)*0.4) : 0,
-          xp: Math.floor(scaleStat(def.xp, Math.max(1, player.floor*0.9)))
-        };
-        e.gold = rand(def.gold[0], def.gold[1]) + Math.floor(player.floor/2);
-        enemies.push(e); break;
-      }
-      tries++;
-    }
-  }
-
-  function trySpawnItem(){
-    let tries=0;
-    while(tries<400){
-      const rx = rand(1, MAP_W-2), ry = rand(1, MAP_H-2);
-      if(map[ry][rx]==='.' && !(rx===player.x && ry===player.y) && !itemAt(rx,ry)){
-        const r = Math.random();
-        if(r < 0.45) items.push({x:rx,y:ry,type:'P'});          // Poção +30
-        else if(r < 0.75) items.push({x:rx,y:ry,type:'A'});     // Flechas +4~8
-        else items.push({x:rx,y:ry,type:'W'});                  // +3 dano
-        break;
-      }
-      tries++;
-    }
-  }
-
-  function carveH(x1,x2,y){
-    for(let x=Math.min(x1,x2); x<=Math.max(x1,x2); x++){
-      if(map[y][x] !== '.') map[y][x] = '.';
-    }
-  }
-  function carveV(y1,y2,x){
-    for(let y=Math.min(y1,y2); y<=Math.max(y1,y2); y++){
-      if(map[y][x] !== '.') map[y][x] = '.';
-    }
-  }
-
-  // ======= Render =======
-  function draw(){
-    let out = '';
-    for(let y=0;y<MAP_H;y++){
-      for(let x=0;x<MAP_W;x++){
-        const proj = projectiles.find(p=>p.x===x && p.y===y);
-        if(player.x===x && player.y===y){ out += `<span class="player">@</span>`; continue; }
-        if(proj){ out += `<span class="proj">*</span>`; continue; }
-        const en = enemies.find(e=>e.x===x && e.y===y);
-        if(en){ out += `<span class="${en.cls}">${en.symbol}</span>`; continue; }
-        const it = items.find(i=>i.x===x && i.y===y);
-        if(it){ out += `<span class="item">${it.type}</span>`; continue; }
-        const ch = map[y][x];
-        if(ch === '.') out += '.';
-        else if(ch === '<') out += `<span class="stairs"><</span>`;
-        else if(ch === 'T') out += `<span class="shop">T</span>`;
-        else if(ch === '+' || ch === '-' || ch === '|') out += ch;
-        else out += '#';
-      }
-      out += '\n';
-    }
-    container.innerHTML = out;
-  }
-
-  function addMsg(txt){ msgEl.textContent = txt; }
-
-  function updateHotbar(){
-    hpEl.textContent = `${player.hp} / ${player.maxHp}`;
-    defEl.textContent = player.defense;
-    floorEl.textContent = player.floor;
-    goldEl.textContent = player.gold;
-    dmgEl.textContent = player.baseDamage;
-    lvlEl.textContent = player.level;
-    xpEl.textContent = player.xp;
-    nextXpEl.textContent = player.nextXp;
-    arrowsEl.textContent = player.arrows;
-    facingEl.textContent = player.facing[2];
-  }
-
-  function enemyAt(x,y){ return enemies.find(e=>e.x===x && e.y===y); }
-  function itemAt(x,y){ return items.find(i=>i.x===x && i.y===y); }
-
-  function tileWalkable(x,y){
-    if(x<0||y<0||x>=MAP_W||y>=MAP_H) return false;
-    const ch = map[y][x];
-    return (ch === '.' || ch === '<' || ch === 'T');
-  }
-
-  function movePlayer(dx,dy){
-    if(isGameOver) return;
-    player.facing = dirFromDelta(dx,dy) || player.facing;
-    const nx = player.x + dx, ny = player.y + dy;
-    const en = enemyAt(nx,ny);
-    if(en){
-      melee(en);
-      return; // redesenha dentro do melee
-    }
-    if(tileWalkable(nx,ny)){
-      player.x = nx; player.y = ny;
-      const tile = map[ny][nx];
-      if(tile === '<'){
-        player.floor++;
-        addMsg('Você desceu para o andar ' + player.floor);
-        generateDungeon();
-      } else if(tile === 'T'){
-        openShop();
-      } else {
-        // pegar item
-        const idx = items.findIndex(i=>i.x===nx && i.y===ny);
-        if(idx !== -1){
-          const it = items[idx];
-          if(it.type === 'P'){ player.hp = Math.min(player.maxHp, player.hp + 30); addMsg('Usou poção: +30 HP'); }
-          if(it.type === 'A'){ const got = rand(4,8); player.arrows += got; addMsg(`Pegou flechas: +${got}`); }
-          if(it.type === 'W'){ player.baseDamage += 3; addMsg('Pegou arma: +3 dano'); }
-          items.splice(idx,1);
-        } else {
-          addMsg(`Andou para (${nx},${ny})`);
-        }
-      }
-      draw(); updateHotbar();
+  genFloor() {
+    this.map = Array.from({length:this.H}, () => Array(this.W).fill('#'));
+    this.explored = Array.from({length:this.H}, () => Array(this.W).fill(false));
+    this.enemies = []; this.items = []; this.projs = [];
+    
+    if (this.player.flr % 10 === 0) { // BOSS FLOOR
+        this.genBossRoom();
     } else {
-      addMsg('Não pode andar aí!');
+        this.genNormalFloor();
     }
-  }
+    this.updateVis();
+    this.draw();
+  },
 
-  function dirFromDelta(dx,dy){
-    if(dx===0 && dy===-1) return DIRS.UP;
-    if(dx===1 && dy===0) return DIRS.RIGHT;
-    if(dx===0 && dy===1) return DIRS.DOWN;
-    if(dx===-1 && dy===0) return DIRS.LEFT;
-    return null;
-  }
-
-  function melee(en){
-    const dmg = player.baseDamage + rand(0,4);
-    const dealt = Math.max(0, dmg - (en.armor||0));
-    en.hp -= dealt;
-    addMsg(`Você atacou ${en.symbol} por ${dealt}.`);
-    if(en.hp <= 0){ killEnemy(en); }
-    else {
-      enemyStrike(en);
-    }
-    updateHotbar(); draw();
-  }
-
-  function enemyStrike(en){
-    const raw = en.damage;
-    const taken = Math.max(0, raw - player.defense);
-    player.hp -= taken;
-    addMsg(`${en.symbol} revidou por ${taken}.`);
-    if(player.hp <= 0) gameOver();
-  }
-
-  function gainXp(amount){
-    player.xp += amount;
-    while(player.xp >= player.nextXp){
-      player.xp -= player.nextXp;
-      player.level++;
-      player.maxHp += 15;
-      player.baseDamage += 2;
-      player.defense += (player.level % 2 === 0) ? 1 : 0; // +1 DEF a cada 2 níveis
-      player.hp = player.maxHp;
-      player.nextXp = Math.floor(player.nextXp * 1.4);
-      addMsg(`Subiu para o nível ${player.level}! (+15 HP, +2 Dano${(player.level%2===0)?', +1 DEF':''})`);
-    }
-  }
-
-  function killEnemy(en){
-    addMsg(`Você derrotou ${en.symbol}!`);
-    player.gold += en.gold;
-    gainXp(en.xp);
-    enemies = enemies.filter(e=>e!==en);
-  }
-
-  // ======= Loja =======
-  function openShop(){
-    const menu = [
-      '1) Poção +30HP (10g)',
-      '2) +Dano (+3) (20g)',
-      '3) Poção Grande +70HP (25g)',
-      '4) +HP Máx (+10) (30g)',
-      '5) Armadura +1 DEF (40g)',
-      '6) Poção de XP +30 (15g)',
-      '7) Pacote de Flechas (+6~12) (18g)'
-    ].join('\n');
-
-    const choice = prompt("Loja:\n" + menu + "\nDigite 1-7, Cancel para sair.");
-    if(choice === null){ addMsg('Saiu da loja.'); return; }
-    const cannot = ()=> addMsg('Ouro insuficiente.');
-
-    switch(choice){
-      case '1':
-        if(player.gold>=10){ player.gold-=10; player.hp=Math.min(player.maxHp, player.hp+30); addMsg('Comprou poção +30HP'); }
-        else cannot(); break;
-      case '2':
-        if(player.gold>=20){ player.gold-=20; player.baseDamage+=3; addMsg('Comprou +3 dano'); }
-        else cannot(); break;
-      case '3':
-        if(player.gold>=25){ player.gold-=25; player.hp=Math.min(player.maxHp, player.hp+70); addMsg('Comprou poção grande +70HP'); }
-        else cannot(); break;
-      case '4':
-        if(player.gold>=30){ player.gold-=30; player.maxHp+=10; player.hp=player.maxHp; addMsg('HP Máximo +10'); }
-        else cannot(); break;
-      case '5':
-        if(player.gold>=40){ player.gold-=40; player.defense+=1; addMsg('DEF +1'); }
-        else cannot(); break;
-      case '6':
-        if(player.gold>=15){ player.gold-=15; gainXp(30); addMsg('Ganhou +30 XP'); }
-        else cannot(); break;
-      case '7':
-        if(player.gold>=18){ player.gold-=18; const plus=rand(6,12); player.arrows+=plus; addMsg(`Comprou ${plus} flechas`); }
-        else cannot(); break;
-      default:
-        addMsg('Opção inválida.');
-    }
-    updateHotbar();
-  }
-
-  // ======= Flechas =======
-  function shoot(){
-    if(isGameOver) return;
-    if(player.arrows<=0){ addMsg('Sem flechas!'); return; }
-    const [dx,dy] = player.facing;
-    const sx = player.x + dx, sy = player.y + dy;
-    if(!inBounds(sx,sy) || map[sy][sx] !== '.'){
-      addMsg('Nada a frente para atirar.'); return;
-    }
-    player.arrows--;
-    projectiles.push({x:sx, y:sy, dx, dy, damage: player.baseDamage + rand(2,6)});
-    addMsg('Você disparou uma flecha.');
-    updateHotbar(); draw();
-  }
-
-  function inBounds(x,y){ return x>=0 && y>=0 && x<MAP_W && y<MAP_H; }
-
-  function stepProjectiles(){
-    const next = [];
-    for(const p of projectiles){
-      const nx = p.x + p.dx, ny = p.y + p.dy;
-      if(!inBounds(nx,ny)) continue;
-      // colisão com parede/borda
-      const ch = map[ny][nx];
-      if(ch !== '.') continue; // para em qualquer coisa que não seja chão
-      // colisão com inimigo
-      const en = enemyAt(nx,ny);
-      if(en){
-        const dealt = Math.max(0, p.damage - (en.armor||0));
-        en.hp -= dealt;
-        addMsg(`Flecha acertou ${en.symbol} por ${dealt}.`);
-        if(en.hp<=0) killEnemy(en);
-        continue; // projeteis desaparecem ao acertar
+  genNormalFloor() {
+    let rooms = [];
+    for(let i=0; i<7; i++){
+      let w = this.r(5,9), h = this.r(4,6);
+      let x = this.r(1, this.W-w-1), y = this.r(1, this.H-h-1);
+      if(this.map[y][x] === '#'){
+        for(let yy=y; yy<y+h; yy++) for(let xx=x; xx<x+w; xx++) this.map[yy][xx] = '.';
+        rooms.push({cx: x+Math.floor(w/2), cy: y+Math.floor(h/2), x, y, w, h});
       }
-      // move se livre
-      p.x = nx; p.y = ny; next.push(p);
     }
-    projectiles = next;
-  }
-
-  function attackAction(){
-    // tenta um inimigo adjacente
-    const dirs = [[0,-1],[1,0],[0,1],[-1,0]];
-    for(const d of dirs){
-      const en = enemyAt(player.x + d[0], player.y + d[1]);
-      if(en){ melee(en); return; }
+    for(let i=1; i<rooms.length; i++){
+      let x = rooms[i-1].cx, y = rooms[i-1].cy;
+      while(x !== rooms[i].cx){ this.map[y][x] = '.'; x += (x < rooms[i].cx ? 1 : -1); }
+      while(y !== rooms[i].cy){ this.map[y][x] = '.'; y += (y < rooms[i].cy ? 1 : -1); }
     }
-    addMsg('Nenhum inimigo adjacente.');
-    updateHotbar(); draw();
-  }
+    this.player.x = rooms[0].cx; this.player.y = rooms[0].cy;
+    this.map[rooms[rooms.length-1].cy][rooms[rooms.length-1].cx] = '<';
+    if(Math.random() > 0.4) this.map[rooms[1].cy][rooms[1].cx] = 'T';
 
-  // ======= IA inimigos =======
-  function moveEnemies(){
-    for(const en of enemies){
-      // mago: 20% chance de "raio" se estiver em raio Manhattan <=4
-      if(en.symbol==='M'){
-        const dist = Math.abs(en.x-player.x)+Math.abs(en.y-player.y);
-        if(dist<=4 && chance(0.2)){
-          const raw = Math.floor(en.damage*0.8);
-          const taken = Math.max(0, raw - Math.floor(player.defense/2));
-          player.hp -= taken;
-          addMsg(`Mago lançou magia: -${taken} HP!`);
-          if(player.hp<=0){ gameOver(); return; }
-          continue; // não anda quando lança
+    const scale = 1 + (this.player.flr * 0.18);
+    const pool = this.enemyPool.filter(e => !e.isBoss && this.player.flr >= (e.minF || 0));
+    rooms.forEach((rm, i) => {
+        if(i===0) return;
+        let d = pool[this.r(0, pool.length-1)];
+        this.enemies.push({...d, x: rm.cx, y: rm.cy, hp: Math.floor(d.hp*scale), dmg: Math.floor(d.dmg*scale)});
+        if(Math.random() > 0.6) this.items.push({x:rm.x+1, y:rm.y+1, t: Math.random()>0.5?'P':'A'});
+    });
+  },
+
+  genBossRoom() {
+    for(let y=4; y<this.H-4; y++) for(let x=6; x<this.W-6; x++) this.map[y][x] = '.';
+    this.player.x = 8; this.player.y = 9;
+    const bDef = this.enemyPool.find(e => e.isBoss);
+    const scale = 1 + (this.player.flr/10);
+    this.enemies.push({...bDef, x: 28, y: 9, hp: Math.floor(bDef.hp*scale), dmg: Math.floor(bDef.dmg*scale)});
+    this.log("O GUARDIÃO DESPERTOU!", "#f55");
+  },
+
+  handleIn(k) {
+    if(document.getElementById('shop-ui').style.display === 'flex') return;
+    let dx = 0, dy = 0;
+    const key = k.toLowerCase();
+    if(key === 'w' || key === 'arrowup') dy = -1;
+    if(key === 's' || key === 'arrowdown') dy = 1;
+    if(key === 'a' || key === 'arrowleft') dx = -1;
+    if(key === 'd' || key === 'arrowright') dx = 1;
+
+    if(dx || dy) {
+      this.player.f = [dx, dy];
+      this.movePlayer(dx, dy);
+    }
+    if(key === ' ' || key === 'enter') this.melee();
+    if(key === 'f') this.shoot();
+    if(key === 'q') this.doDash();
+    this.draw();
+  },
+
+  movePlayer(dx, dy) {
+    const nx = this.player.x + dx, ny = this.player.y + dy;
+    const en = this.enemies.find(e => e.x === nx && e.y === ny);
+    if(en) this.combat(en);
+    else if(this.canGo(nx, ny)) {
+        this.player.x = nx; this.player.y = ny;
+        this.updateVis(); this.checkTile(nx, ny);
+        if(this.player.dash > 0) this.player.dash--;
+    }
+  },
+
+  doDash() {
+    if(this.player.dash > 0) return this.log("Dash em recarga!");
+    const dx = this.player.f[0] * 2, dy = this.player.f[1] * 2;
+    const nx = this.player.x + dx, ny = this.player.y + dy;
+    if(this.canGo(nx, ny)) {
+        this.player.x = nx; this.player.y = ny;
+        this.player.dash = 3;
+        this.updateVis();
+        this.log("DASH! ⚡", "#5ff");
+    }
+  },
+
+  canGo(x, y) { return x>=0 && y>=0 && x<this.W && y<this.H && this.map[y][x] !== '#'; },
+
+  combat(en) {
+    const d = Math.max(1, this.player.dmg + this.r(-2, 4));
+    en.hp -= d;
+    this.log(`Bateu no ${en.n}: -${d}HP`, "#fff");
+    if(en.hp <= 0) {
+        this.log(`Eliminado: ${en.n}`, "#4f4");
+        this.player.gld += this.r(en.g[0], en.g[1]);
+        if(en.isBoss) this.map[en.y][en.x] = '<';
+        this.enemies = this.enemies.filter(e => e !== en);
+        this.gainXp(en.xp);
+    } else {
+        const ed = Math.max(1, en.dmg - this.player.def);
+        this.player.hp -= ed;
+        this.log(`${en.n} atacou: -${ed}HP`, "#f55");
+        this.shake();
+    }
+    if(this.player.hp <= 0) location.reload();
+  },
+
+  melee() {
+    const tx = this.player.x + this.player.f[0], ty = this.player.y + this.player.f[1];
+    const en = this.enemies.find(e => e.x === tx && e.y === ty);
+    if(en) this.combat(en);
+  },
+
+  shoot() {
+    if(this.player.arw > 0) {
+        this.player.arw--;
+        this.projs.push({x: this.player.x, y: this.player.y, dx: this.player.f[0], dy: this.player.f[1]});
+    }
+  },
+
+  updateVis() {
+    for(let y=0; y<this.H; y++) for(let x=0; x<this.W; x++) {
+        const d = Math.sqrt((x-this.player.x)**2 + (y-this.player.y)**2);
+        if(d <= this.visRange) this.explored[y][x] = true;
+    }
+  },
+
+  checkTile(x, y) {
+    const t = this.map[y][x];
+    if(t === '<') { this.player.flr++; this.genFloor(); }
+    if(t === 'T') this.openShop();
+    const it = this.items.find(i => i.x === x && i.y === y);
+    if(it) {
+        if(it.t === 'P') this.player.hp = Math.min(this.player.mHp, this.player.hp+40);
+        if(it.t === 'A') this.player.arw += 8;
+        this.items = this.items.filter(i => i !== it);
+    }
+  },
+
+  gainXp(v) {
+    this.player.xp += v;
+    if(this.player.xp >= this.player.nXp) {
+        this.player.lvl++; this.player.xp = 0; this.player.nXp *= 1.6;
+        this.player.mHp += 25; this.player.hp = this.player.mHp; this.player.dmg += 4;
+        this.log("LEVEL UP!", "#ff5");
+    }
+  },
+
+  openShop() {
+    const container = document.getElementById('shop-items');
+    container.innerHTML = '';
+    this.shopInventory.forEach((it, i) => {
+        const d = document.createElement('div'); d.className = 'shop-item';
+        d.innerHTML = `<span>${it.n} (${it.c}g)</span> <button class="buy-btn" onclick="game.buy(${i})">$</button>`;
+        container.appendChild(d);
+    });
+    document.getElementById('shop-ui').style.display = 'flex';
+  },
+  buy(i) {
+    const it = this.shopInventory[i];
+    if(this.player.gld >= it.c) { this.player.gld -= it.c; it.f(); this.openShop(); this.log("Comprado!"); }
+  },
+  closeShop() { document.getElementById('shop-ui').style.display = 'none'; },
+
+  loop() {
+    this.projs.forEach((p, i) => {
+        p.x += p.dx; p.y += p.dy;
+        const en = this.enemies.find(e => e.x === p.x && e.y === p.y);
+        if(en) { 
+            en.hp -= Math.floor(this.player.dmg * 0.9); 
+            if(en.hp<=0) { this.gainXp(en.xp); this.enemies=this.enemies.filter(e=>e!==en); if(en.isBoss) this.map[en.y][en.x]='<'; }
+            this.projs.splice(i,1); 
+        } else if(!this.canGo(p.x, p.y)) this.projs.splice(i,1);
+    });
+
+    if(Math.random() > 0.6) {
+        this.enemies.forEach(e => {
+            const d = Math.abs(this.player.x-e.x) + Math.abs(this.player.y-e.y);
+            let mx=0, my=0;
+            if(d < 6) { // IA Perseguição
+                if(Math.abs(this.player.x-e.x) > Math.abs(this.player.y-e.y)) mx = Math.sign(this.player.x-e.x);
+                else my = Math.sign(this.player.y-e.y);
+            } else { // Aleatório
+                if(Math.random()>0.5) mx = Math.random()>0.5?1:-1; else my = Math.random()>0.5?1:-1;
+            }
+            const nx = e.x+mx, ny = e.y+my;
+            if(this.canGo(nx, ny) && !this.enemies.find(o=>o!==e && o.x===nx && o.y===ny) && !(nx===this.player.x && ny===this.player.y)) {
+                e.x = nx; e.y = ny;
+            }
+        });
+    }
+    this.draw();
+  },
+
+  draw() {
+    let out = "";
+    for(let y=0; y<this.H; y++) {
+      for(let x=0; x<this.W; x++) {
+        if(!this.explored[y][x]) { out += " "; continue; }
+        const d = Math.sqrt((x-this.player.x)**2 + (y-this.player.y)**2);
+        const vis = d <= this.visRange;
+        const en = this.enemies.find(e => e.x === x && e.y === y);
+        const it = this.items.find(i => i.x === x && i.y === y);
+        const pr = this.projs.find(p => p.x === x && p.y === y);
+        
+        if(x===this.player.x && y===this.player.y) out += `<span class="p">@</span>`;
+        else if(vis && en) out += `<span class="e">${en.s}</span>`;
+        else if(vis && it) out += `<span class="i">${it.t}</span>`;
+        else if(vis && pr) out += `*`;
+        else {
+          const t = this.map[y][x], s = vis ? "" : "opacity:0.25";
+          if(t==='#') out += `<span class="w" style="${s}">#</span>`;
+          else if(t==='<') out += `<span class="s" style="${s}">≡</span>`;
+          else if(t==='T') out += `<span class="i" style="${s}">T</span>`;
+          else out += `<span class="f" style="${s}">.</span>`;
         }
       }
-
-      if(chance(0.4)) continue; // 60% tenta mover
-      const dirs = [[0,-1],[1,0],[0,1],[-1,0]];
-      // leve tendência a perseguir
-      dirs.sort(()=>Math.random()-0.5);
-      let moved=false;
-      for(const [dx,dy] of dirs){
-        const nx = en.x + dx, ny = en.y + dy;
-        if(nx===player.x && ny===player.y){ enemyStrike(en); moved=true; break; }
-        if(inBounds(nx,ny) && map[ny][nx]==='.' && !enemyAt(nx,ny)){
-          // Ogro anda devagar
-          if(en.symbol==='O' && chance(0.5)) { continue; }
-          en.x = nx; en.y = ny; moved=true; break;
-        }
-      }
+      out += "\n";
     }
-  }
+    document.getElementById('ascii-map').innerHTML = out;
+    document.getElementById('u-hp').innerText = this.player.hp + "/" + this.player.mHp;
+    document.getElementById('u-atkdef').innerText = this.player.dmg + "/" + this.player.def;
+    document.getElementById('u-flr').innerText = this.player.flr;
+    document.getElementById('u-gld').innerText = this.player.gld;
+    document.getElementById('u-arw').innerText = this.player.arw;
+    document.getElementById('u-dsh').innerText = this.player.dash === 0 ? "PRONTO" : this.player.dash;
+  },
 
-  function gameOver(){
-    addMsg('Você morreu... recarregue para tentar novamente.');
-    isGameOver = true;
-  }
-
-  // ======= Controles =======
-  document.getElementById('up').onclick = ()=> movePlayer(0,-1);
-  document.getElementById('down').onclick = ()=> movePlayer(0,1);
-  document.getElementById('left').onclick = ()=> movePlayer(-1,0);
-  document.getElementById('right').onclick = ()=> movePlayer(1,0);
-  document.getElementById('attack').onclick = ()=> attackAction();
-  document.getElementById('shoot').onclick = ()=> shoot();
-
-  window.addEventListener('keydown', e=>{
-    if(isGameOver) return;
-    switch(e.key){
-      case 'ArrowUp': movePlayer(0,-1); break;
-      case 'ArrowDown': movePlayer(0,1); break;
-      case 'ArrowLeft': movePlayer(-1,0); break;
-      case 'ArrowRight': movePlayer(1,0); break;
-      case ' ': e.preventDefault(); attackAction(); break;
-      case 'f': case 'F': shoot(); break;
-      case 's': case 'S':
-        if(map[player.y][player.x] === 'T') openShop();
-        else addMsg('Nenhuma loja aqui.');
-        break;
-    }
-  });
-
-  // ======= Loop =======
-  function loop(){
-    if(isGameOver) return;
-    stepProjectiles();
-    moveEnemies();
-    draw();
-    updateHotbar();
-    setTimeout(loop, 220); // mais responsivo para ver a flecha andando
-  }
-
-  // ======= Início =======
-  generateDungeon();
-  draw();
-  updateHotbar();
-  loop();
-
-})();
+  log(m, c="#888") {
+    const l = document.getElementById('msg-log');
+    l.innerHTML = `<span style="color:${c}">${m}</span><br>` + l.innerHTML;
+  },
+  shake() {
+    const v = document.getElementById('map-view');
+    v.classList.add('shake'); setTimeout(() => v.classList.remove('shake'), 150);
+  },
+  r: (a, b) => Math.floor(Math.random() * (b - a + 1)) + a
+};
+game.init();
 </script>
 </body>
   </html>
+  
 
