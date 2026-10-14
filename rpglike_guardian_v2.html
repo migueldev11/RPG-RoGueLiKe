@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<title>RPGLiKe — Guardian Edition v2</title>
+<style>
+*{box-sizing:border-box;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#000;color:#bbb;font-family:'Courier New',Courier,monospace;overflow:hidden}
+#app{display:flex;flex-direction:column;height:100%;padding:5px;gap:5px}
+#stats{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;border:1px solid #333;padding:6px;font-size:10px}
+#stats b{display:block;color:#fff;font-size:12px}
+#status{font-size:10px;color:#888;min-height:14px;border:1px solid #222;padding:3px}
+#log{height:62px;border:1px solid #222;padding:4px;font-size:10px;overflow:hidden;background:#000}
+#view{flex:1;position:relative;border:1px solid #333;display:flex;align-items:center;justify-content:center;overflow:hidden;min-height:0}
+#map{white-space:pre;line-height:1.2;font-weight:bold;margin:0}
+.d{opacity:.3}
+#panel{position:absolute;inset:8px;background:#000;border:1px solid #888;padding:12px;display:none;flex-direction:column;gap:6px;overflow:auto;font-size:12px}
+#panel.on{display:flex}
+button{background:#111;color:#eee;border:1px solid #444;font-family:inherit;padding:6px 8px;cursor:pointer;text-align:left}
+button:disabled{color:#555;border-color:#222}
+#ctrl{display:grid;grid-template-columns:1fr 1.3fr;gap:8px;border:1px solid #333;padding:8px;height:200px}
+.dpad{display:grid;grid-template-columns:repeat(3,44px);grid-template-rows:repeat(3,44px);gap:4px;align-self:center;justify-self:center}
+.dpad button,.acts button{text-align:center;padding:0}
+.dpad button{width:44px;height:44px;font-size:20px}
+.acts{display:grid;grid-template-columns:1fr 1fr;gap:6px;align-content:center}
+.acts button{font-size:11px;font-weight:bold;height:44px}
+#quest{font-size:10px;color:#fd9;border:1px solid #222;padding:3px;min-height:14px}
+.c-r{color:#f55}.c-k{color:#777}
+.shake{animation:sh .15s}
+@keyframes sh{0%,100%{transform:translate(0,0)}25%{transform:translate(-4px,2px)}75%{transform:translate(4px,-2px)}}
+</style></head>
+<body>
+<div id="app">
+ <div id="stats"></div>
+ <div id="status"></div>
+ <div id="quest"></div>
+ <div id="log"></div>
+ <div id="view"><pre id="map"></pre><div id="panel"></div></div>
+ <div id="ctrl">
+  <div class="dpad">
+   <span></span><button data-k="w">▲</button><span></span>
+   <button data-k="a">◄</button><button data-k=".">·</button><button data-k="d">►</button>
+   <span></span><button data-k="s">▼</button><span></span>
+  </div>
+  <div class="acts">
+   <button data-k=" ">⚔ ATACAR</button>
+   <button data-k="f">➳ FLECHA</button>
+   <button data-k="q">⚡ DASH</button>
+   <button data-k="i">▤ ITENS</button>
+   <button data-k="m">♪ SOM</button>
+  </div>
+ </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+const $=i=>document.getElementById(i);
+const R=(a,b)=>Math.floor(Math.random()*(b-a+1))+a;
+const PK=a=>a[R(0,a.length-1)];
+const SH=a=>{for(let i=a.length-1;i>0;i--){const j=R(0,i);[a[i],a[j]]=[a[j],a[i]]}return a};
+const W=56,H=22,SIGHT=17;
+const STN={poison:'Envenenado',stun:'Atordoado',slow:'Lento',regen:'Regenerando',shield:'Escudo',fury:'Fúria',burn:'Queimando'};
+const SPEC={...Object.fromEntries([...'ABCDEFGHI'].map(c=>[c,[c,'#fd5']])),'W':['W','#5cf'],'<':['<','#5ff'],'D':['/','#c96'],'H':['H','#5f5'],'>':['>','#5ff'],'T':['T','#fd5'],'_':['_','#c8f'],'{':['{','#5cf'],'+':['+','#fd5']};
+
+// [sym, nome, cor, hp, dano, andarMin, tipo 0=corpo 1=arco 2=conjurador]
+const SP=[['r','Rato','#bbb',8,3,1,0],['z','Zumbi','#9b9',16,4,1,0],['b','Morcego','#a9c',9,4,1,0],['k','Kobold','#c96',14,5,2,0],['g','Goblin','#6c6',18,6,2,0],['j','Gelatina','#6cf',26,5,3,0],['a','Aranha','#aaa',15,7,3,2],['s','Esqueleto','#ddd',30,9,4,0],['o','Orc','#8a6',40,11,5,0],['A','Arqueiro','#cc8',24,9,5,1],['m','Mago','#c8f',22,12,6,2],['w','Lobo','#aaa',28,10,6,0],['e','Espectro','#aef',26,11,7,2],['T','Troll','#8a8',70,14,8,0],['h','Harpia','#fc8',30,12,8,1],['l','Lich menor','#b8f',45,16,9,2],['p','Pântano','#6a8',38,10,8,0],['c','Cultista','#f88',28,13,7,2],['q','Quimera','#fa6',60,15,10,0],['y','Ghoul','#896',50,13,9,0],['x','Escorpião','#da6',34,12,7,2],['d','Demônio','#f66',65,18,11,1],['v','Vampiro','#c44',55,17,11,0],['n','Necromante','#a6f',40,14,10,1],['u','Umbral','#667',80,15,12,2],['i','Imp','#fa0',22,10,4,1],['f','Fungo-zumbi','#9c6',20,6,3,0],['&','Golem','#aaa',100,16,13,0],['K','Cavaleiro','#ccc',60,16,9,0],['R','Dragonete','#f84',90,20,14,1],['S','Sanguessuga','#c33',20,6,2,0],['N','Múmia','#cb9',55,12,8,0]];
+// [sufixo, mult. vida, mult. dano, efeito]
+const MUT=[['Blindado',1.6,1,'def'],['Veloz',1,1,'fast'],['Venenoso',1,1,'poison'],['Vampírico',1,1,'leech'],['Furioso',1,1.5,''],['Regenerador',1,1,'regen'],['Espectral',1,1,'dodge'],['Gigante',2,1.2,''],['Explosivo',1,1,'boom'],['Ancestral',1.3,1.3,'']];
+// [nome, dano base]
+const WB=[['Adaga',2],['Faca',1],['Machado',6],['Espada',5],['Lança',4],['Maça',6],['Martelo',8],['Foice',5],['Cimitarra',5],['Florete',4],['Clava',3],['Katana',7],['Alabarda',9],['Chicote',3],['Gládio',4],['Mangual',6],['Cajado',2],['Rapieira',4],['Garra',3],['Tridente',6],['Machadinha',4],['Espadão',9],['Picareta',5],['Sabre',5],['Bastão',2],['Estoque',4],['Ferrão',3],['Cutelo',5],['Lâmina Sombria',7],['Espada Rúnica',8],['Machado de Guerra',10],['Lança Espectral',6]];
+// [prefixo, bônus dano, efeito]
+const PRE=[['',0,''],['Afiada',2,''],['Ferrugenta',-1,''],['Abençoada',3,''],['Sangrenta',1,'leech'],['Gélida',1,'slow'],['Ardente',1,'burn'],['Maldita',3,'stun'],['Veloz',0,'crit'],['Pesada',4,''],['Antiga',2,'poison'],['Lendária',5,'leech']];
+// [nome, def]
+const AR=[['Trapos',0],['Couro',1],['Gibão',2],['Cota de malha',3],['Peitoral',4],['Brigandina',3],['Escamas',4],['Placas',5],['Couraça',6],['Túnica',1],['Manto Negro',2],['Robe Rúnico',3],['Armadura Élfica',5],['Túnica do Mago',2],['Colete de Espinhos',4],['Armadura de Ossos',4],['Malha Sagrada',5],['Armadura Demoníaca',7],['Couraça do Dragão',8],['Armadura do Guardião',9]];
+// [nome, código, valor]
+const POT=[['Cura Menor','h',30],['Cura Maior','h',75],['Cura Total','h',999],['Vigor','m',15],['Força','s',1],['Sabedoria','x',60],['Veneno','p',10],['Vertigem','st',3],['Agilidade','d',0],['Visão','r',0],['Regeneração','g',8],['Escudo','sh',10],['Fúria','fu',8],['Ácido','p',20],['Lentidão','sl',4],['Antídoto','cu',0]];
+const PCN=[['Rubra','#f55'],['Azul','#58f'],['Verde','#5d5'],['Negra','#777'],['Dourada','#fd5'],['Violeta','#c6f'],['Cinza','#aaa'],['Branca','#fff'],['Turva','#a96'],['Oleosa','#ad5'],['Prata','#ddd'],['Âmbar','#f94'],['Rósea','#f9b'],['Ciano','#5ff'],['Ocre','#c92'],['Lilás','#b9e']];
+const TITS=['ZAR','XUM','BOL','KAT','NIR','ELO','VEK','MOR','ITU','GAS','PHA','RUT','OBI','SEN','TAL'];
+const SCR=[['Teleporte','tp'],['Mapeamento','mp'],['Bola de Fogo','fb'],['Encantamento','en'],['Proteção','pr'],['Terror','te'],['Chamado','ch'],['Identificação','id'],['Maldição','mal'],['Riqueza','gd'],['Munição','am'],['Cura','hl'],['Ressurreição','rs'],['Vazio','vo'],['Eco','ec']];
+// [nome, efeito passivo, valor]
+const RING=[['Anel de Vitalidade','mhp',10],['Anel de Ferro','def',2],['Anel da Fúria','atk',2],['Anel da Avareza','gold',20],['Anel do Sábio','xp',20],['Anel Regenerador','regen',1],['Anel da Visão','sight',2],['Anel Frugal','food',30],['Anel Esquivo','dodge',15],['Anel Crítico','crit',10]];
+// [nome, comida, cura]
+const FOOD=[['Pão',25,5],['Carne seca',40,0],['Maçã',12,8],['Queijo',30,5],['Sopa quente',45,10],['Ração de viajante',70,0],['Mel',15,15],['Cogumelo',8,0]];
+// [nome, código, valor]
+const TRP=[['Dardos','d',6],['Espinhos','d',12],['Gás venenoso','p',4],['Alarme','al',0],['Teleporte','tp',0],['Chamas','d',10],['Rede','st',2],['Invocação','sp',0]];
+// [nome, parede, cor]
+const BIO=[['Catacumba','#','#888'],['Caverna','%','#a98'],['Floresta Morta','"','#7a7'],['Ruínas','&','#bb9'],['Gelo','=','#9cf'],['Vulcão','*','#e86'],['Abismo',':','#a7e'],['Laboratório','|','#9d9'],['Mina de Cristal','%','#8ff'],['Cripta Inundada','~','#3af'],['Covil de Vermes','&','#a86'],['Fenda Vulcânica','¤','#f73']];
+// [nome, sym, cor, hp, dano]
+const BOSS_L=[['Guardião de Pedra','Ω','#ddd',200,18],['Rainha Aranha','X','#c8c',220,20],['Lich Ancestral','L','#b9f',240,22],['Dragão Ossudo','D','#f94',260,26],['Verme Titã','W','#8a6',280,24],['Golem de Ferro','G','#bbb',300,28],['Sombra Eterna','Ø','#999',320,30],['Arauto do Caos','!','#f6f',360,32]];
+const ALT=[['+10 HP máximo','mhp'],['+1 Força','str'],['+2 Defesa permanente','pdef'],['Maldição: -15 HP','curse'],['Ouro +60','gold'],['Cura total','heal']];
+
+let P,E,M,IT,TR,EXP,SHOP,F,T,OVER,MODE,PCL,TTL,KN;
+
+function newGame(){
+  const CH=loadChar();
+  OVER=false;MODE=null;$('panel').classList.remove('on');
+  PCL=SH(PCN.slice());TTL=SH(TITS.slice());KN={p:{},s:{}};
+  F=0;T=0;FXc=[];
+  P={x:0,y:0,hp:CH.mhp,mhp:CH.mhp,str:CH.str,lv:CH.lv,xp:CH.xp,nx:CH.nx,ldef:CH.ldef,gold:CH.gold,food:100,ammo:10,dash:0,f:[1,0],
+     wpn:{t:'w',n:'Adaga',v:2,fx:''},arm:null,ring:null,inv:[],st:{},pdef:0,atkb:0,res:false,resc:[],q:null};
+  newFloor();log('Você está na vila. Compre, descanse e roube com cuidado.','#fd5');
+}
+
+function newFloor(){
+  music(musicFor());
+  E=[];IT=[];TR=[];SHOP=[];NPCS=[];M=[];EXP=[];
+  for(let y=0;y<H;y++){M.push(Array(W).fill('#'));EXP.push(Array(W).fill(0))}
+  if(isTown(F))return genTown();
+  if(F%5===0){
+    for(let y=3;y<H-3;y++)for(let x=4;x<W-4;x++)M[y][x]='.';
+    P.x=6;P.y=H>>1;M[H>>1][4]='<';makeBoss(W-10,H>>1);log('Um chefe bloqueia o caminho!','#f55');
+  } else genRooms();
+  render();
+}
+
+let FXc=[],NPCS=[],TOWNN='',TOWNI=0;
+const TOWNS=['Vila Central','Porto Cinza','Aldeia Musgo','Forte Ébano','Vale dos Sinos','Cidade-Forja','Refúgio Azul'];
+const NAMES=['Hilda','Corvo','Tomé','Brisa','Osmar','Lia','Garrick','Nerys','Bento','Ysolde'];
+const LORE=['Dizem que o Guardião de Pedra foi o primeiro a jurar proteger a cidade.','A Rainha Aranha tecia túneis para fugir do Lich Ancestral.','Antes da queda, esta região era o coração do reino de Vel\'Mor.','O Dragão Ossudo dorme sob as ruínas, e o sono dele faz a terra tremer.','Quem bebe da fonte das cavernas esquece o próprio nome por um instante.','Os cultistas seguem o Arauto do Caos porque ele promete o fim do silêncio.','Dizem que a Sombra Eterna era um rei que se recusou a morrer.','Na Mina de Cristal há um sino que chama os mortos quando toca.','Os Golens foram feitos para guardar a Forja, mas perderam o criador.','Existe um anel perdido que concede a quem o usa o olhar dos antigos.','Os subterrâneos não recebem luz, mas as lendas chegam até lá.','O Verme Titã segue o som dos passos: ande leve nos túneis.'];
+const pickLore=()=>SH(FALAS().slice()).slice(0,2);
+function addNPC(x,y,name,lines,cap){NPCS.push({x,y,sym:'N',col:cap?'#f9f':'#fd9',name,lines,cap:!!cap})}
+function bankGet(){try{return +localStorage.getItem('rpglike_bank')||0}catch(e){return 0}}
+function isTown(f){return f===0||(f>1&&(f-1)%5===0)}
+function bio(){if(F<0)return['Mundo','#','#666'];return isTown(F)?[TOWNN,'#','#fd9']:BIO[(F-1)%BIO.length]}
+function inn(){P.hp=mh();P.food=100;log('Você descansa na cama. Tudo recuperado!','#5f5')}
+function talk(nb){sfx('npc');if(nb.quest)return questTalk();
+  if(nb.cap){NPCS=NPCS.filter(n=>n!==nb);P.resc.push(nb);log('Você libertou '+nb.name+'! Ele vai para a próxima cidade.','#fd5');log(nb.name+': "'+nb.lines[0]+'"','#fd9');return turn()}
+  log(nb.name+': "'+PK(nb.lines)+'"','#fd9');render();
+}
+function genTown(){
+  TOWNN=TOWNS[TOWNI%TOWNS.length]+(TOWNI>=TOWNS.length?' '+(TOWNI+1):'');TOWNI++;
+  if(MAPAS.length){genMapTown(PK(MAPAS).t);return}
+  M=[];for(let y=0;y<H;y++)M.push(Array(W).fill('.'));
+  for(let x=0;x<W;x++){M[0][x]='#';M[H-1][x]='#'}
+  for(let y=0;y<H;y++){M[y][0]='#';M[y][W-1]='#'}
+  M[H-2][W-3]='>';M[H-2][1]='W';
+  E=[];IT=[];TR=[];NPCS=[];
+  P.x=28;P.y=10;
+  if(UPARR){P.x=W-4;P.y=H-2;UPARR=false}
+  const spots=[[3,2],[15,2],[27,2],[39,2],[3,12],[15,12],[27,12],[39,12]];
+  spots.forEach(([x,y],k)=>{
+    for(let j=y;j<y+4;j++)for(let i=x;i<x+9;i++)M[j][i]=(j===y||j===y+3||i===x||i===x+8)?'#':'.';
+    M[y+3][x+4]='D';M[y+1][x+1]='H';
+    if(k===0){M[y+2][x+7]='T';addNPC(x+5,y+1,'Mercador',['Aqui você compra o que precisa.','Os preços sobem a cada cidade.'])}
+    else addNPC(x+5,y+1,PK(NAMES),pickLore());
+  });
+  for(let i=0;i<2;i++){const c=freeCell(0);if(c)addNPC(c.x,c.y,PK(NAMES),pickLore())}
+  P.resc.forEach(r=>{const c=freeCell(0);if(c)NPCS.push({...r,cap:false,x:c.x,y:c.y})});P.resc=[];
+  for(let i=0;i<6;i++)put('+');
+  const rc=freeCell(4);
+  if(rc)E.push({x:rc.x,y:rc.y,sym:'r',name:'Rato',col:'#bbb',mhp:8,hp:8,dmg:2,def:0,type:0,fx:'',xp:0,gold:[0,0],st:{},al:0});
+  SHOP=Array.from({length:8},()=>genItem());
+  render();
+}
+function genRooms(){
+  const rs=[];
+  for(let i=0;i<90&&rs.length<9;i++){
+    const w=R(4,9),h=R(3,6),x=R(1,W-w-2),y=R(1,H-h-2);
+    if(rs.some(q=>x<q.x+q.w+2&&q.x<x+w+2&&y<q.y+q.h+2&&q.y<y+h+2))continue;
+    rs.push({x,y,w,h,cx:x+(w>>1),cy:y+(h>>1)});
+    for(let yy=y;yy<y+h;yy++)for(let xx=x;xx<x+w;xx++)M[yy][xx]='.';
+  }
+  if(rs.length<3)return newFloor();
+  for(let i=1;i<rs.length;i++)dig(rs[i-1].cx,rs[i-1].cy,rs[i].cx,rs[i].cy);
+  for(let i=0;i<2;i++){const a=PK(rs),b=PK(rs);dig(a.cx,a.cy,b.cx,b.cy)}
+  const first=rs[0],last=rs[rs.length-1];
+  P.x=first.cx;P.y=first.cy;M[last.cy][last.cx]='>';M[first.cy][first.cx-1]='<';
+  if(UPARR){P.x=last.cx;P.y=last.cy;UPARR=false}
+  if(R(0,1)){M[rs[1].cy][rs[1].cx]='T';SHOP=Array.from({length:6},()=>genItem())}
+  if(R(0,2)===0)put('_');
+  if(R(0,2)===0)put('{');
+  for(let i=R(0,2);i>0;i--)put('+');
+  for(let i=R(3,6);i>0;i--){const c=freeCell(2);if(c)IT.push({x:c.x,y:c.y,it:R(0,2)?genItem():{t:'g',v:R(5,20)*F}})}
+  if(F%2===0&&R(0,9)<4){const c=freeCell(5);if(c)addNPC(c.x,c.y,PK(NAMES),pickLore(),true)}
+  for(let i=2+(F>>2)+R(0,2);i>0;i--){const c=freeCell(6);if(c)makeE(c.x,c.y)}
+  for(let i=2+(F>>2);i>0;i--){const c=freeCell(3);if(c)TR.push({x:c.x,y:c.y,k:R(0,TRP.length-1),dead:false})}
+}
+
+function dig(x1,y1,x2,y2){
+  let x=x1,y=y1;
+  while(x!==x2){M[y][x]='.';x+=x<x2?1:-1}
+  while(y!==y2){M[y][x]='.';y+=y<y2?1:-1}
+  M[y][x]='.';
+}
+
+function put(ch){const c=freeCell(0);if(c)M[c.y][c.x]=ch}
+
+function freeCell(d){
+  for(let i=0;i<400;i++){
+    const x=R(1,W-2),y=R(1,H-2);
+    if(M[y][x]!=='.'||Math.hypot(x-P.x,y-P.y)<d||(x===P.x&&y===P.y))continue;
+    if(E.some(e=>e.x===x&&e.y===y)||IT.some(t=>t.x===x&&t.y===y)||TR.some(t=>t.x===x&&t.y===y)||NPCS.some(n=>n.x===x&&n.y===y))continue;
+    return{x,y};
+  }
+  return null;
+}
+
+function makeE(x,y){
+  const s=PK(SP.filter(q=>q[5]<=Math.max(F,1)));
+  const e={x,y,sym:s[0],name:s[1],col:s[2],mhp:s[3]+F*2,dmg:s[4]+(F>>1),def:0,type:s[6],fx:'',xp:5+F*4,gold:[2*F,5*F],st:{},al:0};
+  if(Math.random()<Math.min(.6,.1+F*.03)){
+    const m=PK(MUT);e.name+=' '+m[0];e.mhp=Math.floor(e.mhp*m[1]);e.dmg=Math.floor(e.dmg*m[2]);e.fx=m[3];if(m[3]==='def')e.def=3;
+  }
+  e.hp=e.mhp;E.push(e);
+}
+
+function makeBoss(x,y){sfx('chefeApp');
+  const b=BOSS_L[((F/5)-1)%8],hp=b[3]+F*10;
+  E.push({x,y,sym:b[1],name:b[0],col:b[2],mhp:hp,hp,dmg:b[4]+(F>>2),def:2,type:0,fx:'',xp:150+F*25,gold:[60+F*8,120+F*12],st:{},al:99,boss:1});
+}
+
+function genItem(){
+  const r=R(1,100);
+  if(r<=18){const b=PK(WB),p=PK(PRE);return{t:'w',n:b[0]+(p[0]?' '+p[0]:''),v:b[1]+p[1],fx:p[2],c:(b[1]+p[1])*12}}
+  if(r<=30){const a=PK(AR);return{t:'a',n:a[0],v:a[1],c:a[1]*12+10}}
+  if(r<=50)return{t:'p',k:R(0,POT.length-1),c:20};
+  if(r<=62)return{t:'s',k:R(0,SCR.length-1),c:30};
+  if(r<=70)return{t:'r',k:R(0,RING.length-1),c:70};
+  return{t:'f',k:R(0,FOOD.length-1),c:8};
+}
+
+function nameOf(it){
+  switch(it.t){
+    case'w':case'a':return it.n;
+    case'p':return KN.p[it.k]?POT[it.k][0]:'Poção '+PCL[it.k][0];
+    case's':return KN.s[it.k]?SCR[it.k][0]:'Pergaminho "'+TTL[it.k]+'"';
+    case'r':return RING[it.k][0];
+    case'f':return FOOD[it.k][0];
+    case'g':return it.v+' ouro';
+  }
+}
+
+function ITS(i){
+  switch(i.t){
+    case'w':return['/','#ccc'];case'a':return['[','#aaa'];case'p':return['!',PCL[i.k][1]];
+    case's':return['?','#eee'];case'r':return['=','#8ef'];case'f':return['%','#c96'];case'g':return['$','#fd5'];
+  }
+}
+
+function ring(f){return P.ring&&RING[P.ring.k][1]===f?RING[P.ring.k][2]:0}
+function mh(){return P.mhp+ring('mhp')}
+function sight(){return SIGHT+ring('sight')}
+function atk(){let a=P.wpn.v+P.str+P.atkb+(P.lv>>1)+ring('atk');if(P.st.fury)a=Math.floor(a*1.5);return a}
+function def(){return(P.arm?P.arm.v:0)+(P.ldef||0)+P.pdef+ring('def')+(P.st.shield?4:0)}
+function heal(v){P.hp=Math.min(mh(),P.hp+v)}
+function canGo(x,y){return x>=0&&y>=0&&x<W&&y<H&&M[y][x]!=='#'}
+function cheb(a,b){return Math.max(Math.abs(a.x-b.x),Math.abs(a.y-b.y))}
+
+function los(x0,y0,x1,y1){
+  let dx=Math.abs(x1-x0),dy=-Math.abs(y1-y0),sx=x0<x1?1:-1,sy=y0<y1?1:-1,e=dx+dy,x=x0,y=y0;
+  while(!(x===x1&&y===y1)){
+    if(!(x===x0&&y===y0)&&M[y][x]==='#')return false;
+    const e2=2*e;if(e2>=dy){e+=dy;x+=sx}if(e2<=dx){e+=dx;y+=sy}
+  }
+  return true;
+}
+
+function passable(x,y){return canGo(x,y)&&!NPCS.some(n=>n.x===x&&n.y===y)&&!(x===P.x&&y===P.y)&&!E.some(o=>!o.dead&&o.x===x&&o.y===y)}
+function mv(e,dx,dy){
+  for(const[a,b]of[[dx,dy],[dx,0],[0,dy]]){
+    if(!a&&!b)continue;
+    if(passable(e.x+a,e.y+b)){e.x+=a;e.y+=b;return true}
+  }
+  return false;
+}
+
+function eAct(e){
+  if(OVER||e.dead)return;
+  if(e.st.stun){if(--e.st.stun<=0)delete e.st.stun;return}
+  if(e.st.burn){e.hp-=2;if(--e.st.burn<=0)delete e.st.burn;if(e.hp<=0)return killE(e)}
+  if(e.st.poison){e.hp--;if(--e.st.poison<=0)delete e.st.poison;if(e.hp<=0)return killE(e)}
+  if(e.st.slow){if(--e.st.slow<=0)delete e.st.slow;if(T%2)return}
+  if(e.fx==='regen'&&e.hp<e.mhp)e.hp++;
+  const d=Math.hypot(e.x-P.x,e.y-P.y),md=Math.abs(e.x-P.x)+Math.abs(e.y-P.y);
+  const seen=d<=11&&los(e.x,e.y,P.x,P.y);
+  if(seen)e.al=12;else if(e.al>0)e.al--;
+  if(e.al<=0){if(R(0,5)===0)mv(e,R(-1,1),R(-1,1));return}
+  if(md===1)return eHit(e);
+  if(e.type===1&&seen&&md<=6&&(e.x===P.x||e.y===P.y))return eShot(e);
+  if(e.type===2&&seen&&d<=5&&R(0,2)===0)return cast(e);
+  for(let k=0;k<(e.fx==='fast'?2:1);k++){
+    if(Math.abs(e.x-P.x)+Math.abs(e.y-P.y)===1)break;
+    mv(e,Math.sign(P.x-e.x),Math.sign(P.y-e.y));
+  }
+}
+
+function eHit(e){
+  if(R(1,100)<=ring('dodge'))return log('Você esquiva de '+e.name+'!','#8cf');
+  const d=Math.max(1,e.dmg-(def()>>1));
+  hurt(d,e.name);
+  if(e.fx==='leech')e.hp=Math.min(e.mhp,e.hp+(d>>1));
+  if(e.fx==='poison'&&R(0,2)===0)P.st.poison=4;
+}
+function eShot(e){hurt(Math.max(1,e.dmg-(def()>>1)-2),e.name+' (flecha)')}
+function cast(e){
+  const k=PK(['poison','slow','stun']);
+  P.st[k]=k==='stun'?2:3;
+  log(e.name+' lança maldição: '+STN[k]+'!','#c8f');
+  hurt(Math.max(1,e.dmg>>1),e.name);
+}
+
+function hurt(n,src){
+  if(OVER)return;
+  P.hp-=n;log(src+': -'+n+' HP','#f66');shake();sfx('dano');
+  if(P.hp<=0){
+    if(P.res){P.res=false;P.hp=Math.floor(mh()*.3);log('RESSURREIÇÃO! Você se levanta.','#fd5')}
+    else die();
+  }
+}
+
+function hitE(en){
+  let d=atk()+R(-1,2);
+  const crit=R(1,100)<=ring('crit')+(P.wpn.fx==='crit'?20:0)+5;
+  if(crit)d*=2;
+  if(en.fx==='dodge'&&R(1,100)<=35)return log('Errou o '+en.name+'!','#aaa');
+  d=Math.max(1,d-en.def);
+  en.hp-=d;
+  log((crit?'CRÍTICO! ':'')+'Você causa '+d+' em '+en.name,crit?'#fd5':'#fff');
+  sfx(crit?'crit':'atk');
+  const w=P.wpn.fx;
+  if(w==='leech')heal(1);
+  if(w==='slow')en.st.slow=3;
+  if(w==='burn')en.st.burn=3;
+  if(w==='stun'&&R(0,3)===0)en.st.stun=2;
+  if(w==='poison')en.st.poison=3;
+  en.al=12;
+  if(en.hp<=0)killE(en);
+}
+
+function killE(en){
+  if(en.dead)return;
+  en.dead=true;E=E.filter(e=>e!==en);
+  log('Eliminado: '+en.name,'#6f6');sfx('morte');if(P.q&&P.q.k==='kill')P.q.have++;
+  P.gold+=Math.round(R(en.gold[0],en.gold[1])*(1+ring('gold')/100));
+  gainXp(en.xp);
+  if(en.fx==='boom'&&Math.abs(en.x-P.x)+Math.abs(en.y-P.y)<=1)hurt(6,'Explosão de '+en.name);
+  if(en.boss){sfx('chefeDer');M[en.y][en.x]='>';log('O chefe caiu! A escada apareceu.','#fd5')}
+  else if(R(1,100)<=30)IT.push({x:en.x,y:en.y,it:genItem()});
+  render();
+}
+
+function gainXp(v){
+  P.xp+=Math.round(v*(1+ring('xp')/100));
+  while(P.xp>=P.nx){P.xp-=P.nx;P.lv++;P.nx=Math.floor(P.nx*1.5);P.mhp+=10;P.str++;P.ldef++;heal(15);log('NÍVEL '+P.lv+'!','#fd5');sfx('nivel')}
+}
+
+function shoot(){
+  if(P.ammo<=0)return log('Sem flechas!','#888');
+  P.ammo--;sfx('flecha');
+  const path=[];let x=P.x,y=P.y,tgt=null;
+  for(let i=0;i<8&&!tgt;i++){
+    x+=P.f[0];y+=P.f[1];
+    if(!canGo(x,y))break;
+    path.push([x,y]);
+    tgt=E.find(e=>e.x===x&&e.y===y)||null;
+  }
+  path.forEach((p,k)=>setTimeout(()=>{FXc=[p];render()},k*60));
+  setTimeout(()=>{
+    FXc=[];
+    if(tgt&&!tgt.dead){const d=Math.max(1,4+(P.lv>>1)+ring('atk')-tgt.def);tgt.hp-=d;tgt.al=12;log('Flecha acerta '+tgt.name+': '+d,'#fc5');if(tgt.hp<=0)killE(tgt)}
+    else log('A flecha se perde...','#777');
+    render();
+  },path.length*60);
+  turn();
+}
+function shootOld(){
+  if(P.ammo<=0)return log('Sem flechas!','#888');
+  P.ammo--;
+  let x=P.x,y=P.y,hit=false;
+  for(let i=0;i<8&&!hit;i++){
+    x+=P.f[0];y+=P.f[1];
+    if(!canGo(x,y))break;
+    const en=E.find(e=>e.x===x&&e.y===y);
+    if(en){
+      hit=true;
+      const d=Math.max(1,4+(P.lv>>1)+ring('atk')-en.def);
+      en.hp-=d;en.al=12;log('Flecha acerta '+en.name+': '+d,'#fc5');
+      if(en.hp<=0)killE(en);
+    }
+  }
+  if(!hit)log('A flecha se perde...','#777');
+  turn();
+}
+
+function bump(){
+  const en=E.find(e=>e.x===P.x+P.f[0]&&e.y===P.y+P.f[1]);
+  if(!en)return log('Nada à frente.','#777');
+  hitE(en);turn();
+}
+
+function dash(){
+  if(P.dash>0)return log('Dash recarregando ('+P.dash+')','#888');
+  let moved=0;
+  for(let i=0;i<2;i++){
+    const nx=P.x+P.f[0],ny=P.y+P.f[1];
+    if(!passable(nx,ny))break;
+    P.x=nx;P.y=ny;moved++;
+  }
+  if(!moved)return log('Sem espaço para o dash.','#888');
+  P.dash=4;log('DASH!','#5cf');sfx('dash');
+  if(landed())turn();
+}
+
+function stepP(dx,dy){
+  P.f=[dx,dy];
+  const nx=P.x+dx,ny=P.y+dy;
+  const nb=NPCS.find(n=>n.x===nx&&n.y===ny);
+  if(nb)return talk(nb);
+  const en=E.find(e=>e.x===nx&&e.y===ny);
+  if(en){hitE(en);return turn()}
+  if(!canGo(nx,ny))return render();
+  P.x=nx;P.y=ny;
+  if(landed())turn();
+}
+
+function landed(){
+  const x=P.x,y=P.y,c=M[y][x];
+  if(c==='W'){enterWorld(PLACE_POS);return false}
+  if(F<0&&PL[c]){enterPlace(c,x,y);return false}
+  if(c==='<'&&INPLACE&&F===PL[INPLACE].f){enterWorld(PLACE_POS);return false}
+  if(c==='<'){sfx('escada');UPARR=true;F--;newFloor();return false}
+  if(c==='>'){sfx('escada');F++;if(P.q&&P.q.k==='floor')P.q.have=Math.max(P.q.have,F);log('Você desce ao andar '+F+' — '+bio()[0],'#5cf');newFloor();return false}
+  if(c==='T'||c==='U'||c==='V'){openShop(c==='T'?'arma':c==='U'?'pocao':'arcana');return true}
+  if(c==='_'){M[y][x]='.';openAltar();return true}
+  if(c==='{'){M[y][x]='.';fountain();}
+  if(c==='+'){M[y][x]='.';chest()}
+  if(c==='H'){inn();return true}
+  const tr=TR.find(t=>t.x===x&&t.y===y&&!t.dead);
+  if(tr){tr.dead=true;hitTrap(tr)}
+  const it=IT.find(i=>i.x===x&&i.y===y);
+  if(it){
+    if(it.it.t==='g'){P.gold+=it.it.v;log('+'+it.it.v+' ouro','#fd5');sfx('ouro')}
+    else if(P.inv.length<16){P.inv.push(it.it);log('Pegou: '+nameOf(it.it),'#ddd')}
+    else log('Mochila cheia!','#f88');
+    IT=IT.filter(i=>i!==it);
+  }
+  return true;
+}
+
+function hitTrap(t){
+  const[nm,code,v]=TRP[t.k];
+  log('Armadilha: '+nm+'!','#f55');sfx('armad');
+  if(code==='d')hurt(Math.max(1,v-(def()>>1)),nm);
+  else if(code==='p')P.st.poison=v;
+  else if(code==='al')E.forEach(e=>e.al=30);
+  else if(code==='tp'){const c=freeCell(0);if(c){P.x=c.x;P.y=c.y}}
+  else if(code==='st')P.st.stun=v;
+  else if(code==='sp'){
+    for(const[dx,dy]of[[1,0],[-1,0],[0,1],[0,-1]]){
+      const x=P.x+dx,y=P.y+dy;
+      if(passable(x,y)){makeE(x,y);E[E.length-1].al=12;break}
+    }
+  }
+}
+
+function fountain(){sfx('fonte');
+  const r=R(0,4);
+  if(r===0){P.hp=mh();log('A água cura tudo!','#5f5')}
+  else if(r===1){gainXp(30);log('Sabedoria da fonte (+XP)','#5cf')}
+  else if(r===2){P.st.poison=5;log('A água está envenenada!','#8a6')}
+  else if(r===3){P.str++;log('Vigor da fonte: +1 força','#fd5')}
+  else log('Água turva. Nada acontece.');
+}
+
+function chest(){ sfx('bau');if(isTown(F)){const g=R(10,40);P.gold+=g;log('Você roubou '+g+' ouro... ninguém viu.','#fd5');return}
+  if(R(0,1)){const g=R(20,60)*F;P.gold+=g;log('Baú: +'+g+' ouro','#fd5')}
+  else if(P.inv.length<16){const it=genItem();P.inv.push(it);log('Baú: '+nameOf(it),'#ddd')}
+  else log('Baú encontrado, mas a mochila está cheia.','#f88');
+}
+
+function openAltar(){
+  const[a,b]=SH(ALT.slice());
+  panel('<b>ALTAR SOMBRIO</b><div>Uma voz oferece uma barganha.</div>'+
+    '<button onclick="altar(\''+a[1]+'\')">'+a[0]+'</button>'+
+    '<button onclick="altar(\''+b[1]+'\')">'+b[0]+'</button>'+
+    '<button onclick="closeP()">Recusar</button>','altar');
+}
+function altar(c){
+  closeP();
+  if(c==='mhp'){P.mhp+=10;heal(10)}
+  else if(c==='str')P.str++;
+  else if(c==='pdef')P.pdef+=2;
+  else if(c==='curse')hurt(15,'Maldição');
+  else if(c==='gold')P.gold+=60;
+  else P.hp=mh();
+  turn();
+}
+
+function openShop(t){
+  if(!SHOP.length||SHOPT!==t){SHOP=genShop(t);SHOPT=t}
+  let h='<b>'+SHOPNOME[t]+'</b><div>Ouro: '+P.gold+'</div>';
+  SHOP.forEach((it,i)=>h+='<button '+(P.gold<it.c?'disabled':'')+' onclick="buy('+i+')">'+nameOf(it)+' — '+it.c+' ouro</button>');
+  if(!SHOP.length)h+='<i>Esgotado.</i>';
+  h+='<button onclick="closeP()">FECHAR</button>';
+  panel(h,'shop');
+}
+function buy(i){
+  const it=SHOP[i];
+  if(P.gold<it.c)return;
+  if(P.inv.length>=16)return log('Mochila cheia!','#f88');
+  P.gold-=it.c;P.inv.push(it);SHOP.splice(i,1);sfx('compra');openShop(SHOPT);
+}
+
+function openInv(){
+  let h='<b>MOCHILA ('+P.inv.length+'/16)</b>'+
+    '<div class="c-k">Arma: '+P.wpn.n+' | Armadura: '+(P.arm?P.arm.n:'nenhuma')+' | Anel: '+(P.ring?nameOf(P.ring):'nenhum')+'</div>';
+  P.inv.forEach((it,i)=>h+='<button onclick="useItem('+i+')">'+String.fromCharCode(97+i)+') '+nameOf(it)+'</button>');
+  if(!P.inv.length)h+='<i>Vazio.</i>';
+  h+='<button onclick="closeP()">FECHAR (i)</button>';
+  panel(h,'inv');
+}
+
+function useItem(i){
+  const it=P.inv[i];if(!it)return;
+  if(it.t==='w'||it.t==='a'||it.t==='r'){
+    const key=it.t==='w'?'wpn':it.t==='a'?'arm':'ring';
+    const old=P[key];P[key]=it;P.inv.splice(i,1);if(old)P.inv.push(old);
+    log('Equipado: '+nameOf(it),'#ddd');
+  } else {
+    P.inv.splice(i,1);
+    if(it.t==='f'){const[nm,fd,hl]=FOOD[it.k];P.food=Math.min(100,P.food+fd);heal(hl);log('Comeu: '+nm,'#c96')}
+    else if(it.t==='p'){KN.p[it.k]=true;quaff(POT[it.k])}
+    else if(it.t==='s'){KN.s[it.k]=true;read(SCR[it.k][1])}
+  }
+  closeP();turn();
+}
+
+function quaff([nm,c,v]){sfx('cura');
+  log('Você bebe: '+nm,'#ddd');
+  if(c==='h')heal(v);
+  else if(c==='m'){P.mhp+=v;heal(v)}
+  else if(c==='s')P.str+=v;
+  else if(c==='x')gainXp(v);
+  else if(c==='p')hurt(v,'Veneno');
+  else if(c==='st')P.st.stun=v;
+  else if(c==='d')P.dash=0;
+  else if(c==='r')EXP.forEach(r=>r.fill(1));
+  else if(c==='g')P.st.regen=v;
+  else if(c==='sh')P.st.shield=v;
+  else if(c==='fu')P.st.fury=v;
+  else if(c==='sl')P.st.slow=v;
+  else if(c==='cu')delete P.st.poison;
+}
+
+function read(c){
+  switch(c){
+    case'tp':{const k=freeCell(0);if(k){P.x=k.x;P.y=k.y}}break;
+    case'mp':EXP.forEach(r=>r.fill(1));break;
+    case'fb':E.filter(e=>cheb(e,P)<=3).forEach(e=>{e.hp-=15;if(e.hp<=0)killE(e)});break;
+    case'en':P.atkb++;break;
+    case'pr':P.pdef+=2;break;
+    case'te':E.forEach(e=>{if(Math.hypot(e.x-P.x,e.y-P.y)<=sight())e.st.stun=4});break;
+    case'ch':E.forEach(e=>e.al=30);break;
+    case'id':POT.forEach((_,k)=>KN.p[k]=true);break;
+    case'mal':P.pdef-=1;break;
+    case'gd':P.gold+=50;break;
+    case'am':P.ammo+=10;break;
+    case'hl':heal(50);break;
+    case'rs':P.res=true;break;
+    case'vo':E.filter(e=>cheb(e,P)<=2).forEach(e=>{e.hp-=20;if(e.hp<=0)killE(e)});break;
+    case'ec':heal(10);gainXp(10);break;
+  }
+}
+
+function turn(){
+  if(OVER)return;
+  T++;
+  for(const k in P.st){
+    if(k==='poison')hurt(2,'Veneno');
+    if(k==='regen')heal(2);
+    if(OVER)return;
+    if(--P.st[k]<=0)delete P.st[k];
+  }
+  if(T%6===0&&R(1,100)>ring('food'))P.food--;
+  if(P.food<=0&&T%6===0)hurt(1,'Fome');
+  if(OVER)return;
+  heal(ring('regen'));
+  if(P.dash>0)P.dash--;
+  if(T%60===0&&E.length<14&&F>0&&!isTown(F)){const c=freeCell(10);if(c)makeE(c.x,c.y)}
+  [...E].forEach(e=>{if(!e.dead&&!OVER)eAct(e)});
+  render();
+}
+
+function panel(html,mode){MODE=mode;$('panel').innerHTML=html;$('panel').classList.add('on');render()}
+function closeP(){MODE=null;$('panel').classList.remove('on');render()}
+function die(){
+  sfx('morteP');OVER=true;MODE='over';
+  saveChar({lv:P.lv,xp:P.xp,nx:P.nx,mhp:P.mhp,str:P.str,ldef:P.ldef,gold:P.gold>>1});clearRun();
+  let hs=0;try{hs=+localStorage.getItem('rpglike_best')||0}catch(e){}
+  if(F>hs)try{localStorage.setItem('rpglike_best',F)}catch(e){}
+  panel('<b class="c-r">VOCÊ MORREU</b><div>Andar '+F+' · Nível '+P.lv+' · Ouro '+P.gold+' · Turnos '+T+'</div>'+
+    '<div>Recorde: andar '+Math.max(hs,F)+'</div><button onclick="newGame()">NOVA AVENTURA</button>','over');
+}
+
+function act(k){
+  unlock();
+  const kk=String(k||'').toLowerCase();
+  if(kk==='m'){toggleMute();return render()}
+  if(kk==='l'&&!MODE){openLore();return}
+  if(MODE==='over'||MODE==='menu')return;
+  if(MODE){
+    if(kk==='escape'||(kk==='i'&&MODE==='inv'))return closeP();
+    if(MODE==='inv'&&/^[a-p]$/.test(kk))return useItem(kk.charCodeAt(0)-97);
+    return;
+  }
+  if(P.st.stun){log('Atordoado! Você perde o turno.','#fd5');return turn()}
+  const D={w:[0,-1],arrowup:[0,-1],s:[0,1],arrowdown:[0,1],a:[-1,0],arrowleft:[-1,0],d:[1,0],arrowright:[1,0]};
+  if(D[kk])return stepP(...D[kk]);
+  if(kk===' '||kk==='enter')return bump();
+  if(kk==='f')return shoot();
+  if(kk==='q')return dash();
+  if(kk==='i')return openInv();
+  if(kk==='.'||kk==='5')return turn();
+}
+
+function render(){
+  const S=sight();let o='';
+  for(let y=0;y<H;y++){
+    for(let x=0;x<W;x++){
+      const vis=Math.hypot(x-P.x,y-P.y)<=S;
+      const en=vis?E.find(e=>e.x===x&&e.y===y&&!e.dead):0;
+      const nb=vis?NPCS.find(n=>n.x===x&&n.y===y):0;
+      const it=vis?IT.find(i=>i.x===x&&i.y===y):0;
+      const tr=TR.find(t=>t.x===x&&t.y===y&&t.dead);
+      const c=M[y][x];
+      let ch,cl;
+      if(x===P.x&&y===P.y){ch='@';cl='#fff'}
+      else if(FXc.some(p=>p[0]===x&&p[1]===y)){ch='*';cl='#fc5'}
+      else if(nb){ch=nb.sym;cl=nb.col}
+      else if(en){ch=en.sym;cl=en.col}
+      else if(it){[ch,cl]=ITS(it.it)}
+      else if(tr){ch='^';cl='#f55'}
+      else if(c==='#'){ch=bio()[1];cl=bio()[2]}
+      else if(c==='.'){ch='.';cl='#555'}
+      else[ch,cl]=SPEC[c]||[c,'#ccc'];
+      o+='<span class="'+(vis?'':'d')+'" style="color:'+cl+'">'+ch+'</span>';
+    }
+    o+='\n';
+  }
+  $('map').innerHTML=o;stats();if(!OVER)saveRun();
+}
+
+function stats(){
+  const h=(a,b)=>'<div>'+a+'<b>'+b+'</b></div>';
+  $('stats').innerHTML=h('HP',P.hp+'/'+mh())+h('ATQ/DEF',atk()+'/'+def())+h('NV (XP)',P.lv+' ('+P.xp+'/'+P.nx+')')+
+    h('ANDAR',F+' · '+bio()[0])+h('OURO',P.gold)+h('FOME',P.food);
+  const st=Object.keys(P.st).map(k=>STN[k]||k).join(' ');
+  $('status').innerHTML='Flechas '+P.ammo+' · Dash '+(P.dash?P.dash:'PRONTO')+' · '+(st||'sem efeitos');
+  $('quest').textContent=P.q?'MISSÃO: '+P.q.t+' ['+P.q.have+'/'+P.q.need+']':'Sem missão ativa: fale com o Guarda (Q) da cidade.';
+}
+
+function log(m,c){
+  const d=document.createElement('div');d.style.color=c||'#999';d.textContent=m;
+  const L=$('log');L.prepend(d);while(L.children.length>4)L.lastChild.remove();
+}
+function shake(){const v=$('view');v.classList.remove('shake');void v.offsetWidth;v.classList.add('shake')}
+
+function fit(){
+  const v=$('view');
+  const fs=Math.min(v.clientWidth/(W*0.62),v.clientHeight/(H*1.2));
+  $('map').style.fontSize=Math.max(8,Math.floor(fs))+'px';
+}
+
+const SFXD='sounds/';
+const TRK={vila:'01_Vila_Central',catacumba:'02_Catacumba',caverna:'03_Caverna',floresta:'04_Floresta_Morta',ruinas:'05_Ruinas',gelo:'06_Gelo',vulcao:'07_Vulcao',abismo:'08_Abismo',lab:'09_Laboratorio',mina:'10_Mina_de_Cristal',cripta:'11_Cripta_Inundada',covil:'12_Covil_de_Vermes',fenda:'13_Fenda_Vulcanica',chefe:'14_Chefe_Guardiao'};
+const BTRK=['catacumba','caverna','floresta','ruinas','gelo','vulcao','abismo','lab','mina','cripta','covil','fenda'];
+const SFX={atk:'01_Ataque_Espada',mach:'02_Ataque_Machado',flecha:'03_Flecha_Disparo',impacto:'04_Flecha_Impacto',dash:'05_Dash',dano:'06_Dano_Jogador',crit:'07_Critico',morte:'08_Inimigo_Morre',nivel:'09_Subir_Nivel',ouro:'10_Pegar_Ouro',bau:'11_Abrir_Bau',cura:'12_Pocao_Cura',armad:'13_Armadilha',tele:'14_Teleporte',chefeApp:'15_Chefe_Aparece',chefeDer:'16_Chefe_Derrotado',fonte:'17_Fonte_Magica',compra:'18_Comprar_Item',fome:'19_Fome',morteP:'20_Morte_Jogador',npc:'21_Falar_NPC',escada:'22_Escada_Proximo_Andar'};
+let MUTED=false,UNLOCKED=false,mus=null,musKey='';
+let SOMERR=false,ZSTATE=0,ZURL={},UPARR=false,TXT={},MAPAS=[],STARTED=false;
+function loadPack(file,cb){return fetch(file).then(r=>{if(!r.ok)throw 0;return r.arrayBuffer()}).then(b=>JSZip.loadAsync(b)).then(z=>{const j=[];z.forEach((p,f)=>{if(!f.dir)j.push(f.async('string').then(t=>cb(p.split('/').pop(),t)))});return Promise.all(j)}).catch(()=>{})}
+function FALAS(){return TXT['falas.txt']?TXT['falas.txt'].split(/\r?\n/).filter(x=>x.trim()):LORE}
+let WORLD=null,INPLACE=null,PLACE_POS=null,SHOPT=null;
+const SHOPNOME={arma:'FERREIRO',pocao:'BOTICÁRIO',arcana:'ARCANISTA'};
+const CSPEC={'Vila Central':'arma','Aldeia Musgo':'pocao','Porto Cinza':'arcana','Vila Marítima':'pocao'};
+const QUESTS=[{k:'kill',t:'Derrote 5 inimigos',need:5,gold:60},{k:'floor',t:'Chegue ao andar 3',need:3,gold:80},{k:'kill',t:'Derrote 12 inimigos',need:12,gold:150},{k:'floor',t:'Chegue ao andar 6',need:6,gold:200}];
+function questTalk(){
+  if(!P.q){const Q=PK(QUESTS);P.q={k:Q.k,t:Q.t,need:Q.need,have:0,gold:Q.gold};log('Missão aceita: '+Q.t,'#fd5');return render()}
+  if(P.q.have>=P.q.need){P.gold+=P.q.gold;log('Missão concluída! +'+P.q.gold+' ouro','#5f5');P.q=null;return render()}
+  log('Ainda não: '+P.q.t+' ['+P.q.have+'/'+P.q.need+']','#fd9');render();
+}
+function genShop(t){
+  const n=CSPEC[TOWNN]===t?9:5,a=[];
+  for(let i=0;i<n;i++){
+    if(t==='arma'){const b=PK(WB),p=PK(PRE);a.push({t:'w',n:b[0]+(p[0]?' '+p[0]:''),v:b[1]+p[1],fx:p[2],c:(b[1]+p[1])*12})}
+    else if(t==='pocao')a.push({t:'p',k:R(0,POT.length-1),c:20});
+    else if(R(0,2)===0)a.push({t:'r',k:R(0,RING.length-1),c:70});
+    else a.push({t:'s',k:R(0,SCR.length-1),c:30});
+  }
+  return a;
+}
+const PL={A:{n:'Cidade Inicial',t:'town',m:'vila_central.txt'},B:{n:'Vilarejo Rural',t:'town',m:'aldeia_musgo.txt'},C:{n:'Cidade Grande',t:'town',m:'porto_cinza.txt'},D:{n:'Cidade dos Ossos',t:'dun',f:2},E:{n:'Campos',t:'dun',f:3},F:{n:'Cemitério / Raid',t:'dun',f:5},G:{n:'Floresta',t:'dun',f:4},H:{n:'Vila Marítima',t:'town',m:'vila_maritima.txt'},I:{n:'Chefe End Game',t:'lock'}};
+function enterWorld(pos){
+  F=-1;INPLACE=null;E=[];IT=[];TR=[];NPCS=[];SHOP=[];EXP=[];
+  const rows=WORLD?WORLD.split(/\r?\n/).filter(l=>l.length):[];
+  M=[];for(let y=0;y<H;y++)M.push(((rows[y]||'').padEnd(W,WORLD?'#':'.').slice(0,W)).split(''));
+  let a=null;for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(!a&&M[y][x]==='A')a={x,y};
+  const q=pos||a||{x:4,y:10};
+  P.x=q.x;P.y=q.y;
+  render();
+}
+function enterPlace(ch,x,y){
+  const p=PL[ch];
+  if(p.t==='lock')return log('Caminho bloqueado. Ainda não há como chegar lá.','#f88');
+  PLACE_POS={x,y};INPLACE=ch;
+  if(p.t==='town'){const mp=MAPAS.find(m=>m.n===p.m);if(mp)genMapTown(mp.t);else genTown();return}
+  F=p.f;newFloor();log('Você entra em '+p.n+'.','#fd5');
+}
+function openLore(){
+  const t=TXT['lore.txt']||'O livro de lore está vazio. Coloque textos.zip ao lado do HTML.';
+  $('panel').innerHTML='<b>LORE DE VEL\'MOR</b><pre style="white-space:pre-wrap;font-size:12px;line-height:1.4"></pre><button onclick="closeP()">FECHAR (Esc)</button>';
+  $('panel').querySelector('pre').textContent=t;
+  MODE='lore';$('panel').classList.add('on');
+}
+function genMapTown(txt){
+  const L=txt.split(/\r?\n/).filter(l=>l.length);
+  if(L[0].startsWith('NOME:')){TOWNN=L.shift().slice(5).trim()}
+  M=[];EXP=[];
+  for(let y=0;y<H;y++){M.push(((L[y]||'').padEnd(W,'#').slice(0,W)).split('').map(c=>c==='P'||c==='N'||c==='Q'?'.':c))}
+  E=[];IT=[];TR=[];NPCS=[];SHOP=Array.from({length:8},()=>genItem());
+  M[H-2][1]='W';
+  let st=null;
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    const c=(L[y]||'')[x]||'#';
+    if(c==='P')P.x=x,P.y=y,st=st||{x,y};
+    if(c==='N')addNPC(x,y,PK(NAMES),SH(FALAS().slice()).slice(0,2));
+    if(c==='Q'){addNPC(x,y,'Guarda',['Preciso de ajuda. Aceite uma missão e volte aqui para receber a recompensa.'],0);NPCS[NPCS.length-1].quest=1}
+    if(c==='>')st={x,y};
+  }
+  if(!st){P.x=W>>1;P.y=H>>1;M[P.y][P.x]='.'}
+  if(UPARR&&st){P.x=st.x;P.y=st.y;UPARR=false}
+  for(let i=0;i<6;i++)put('+');
+  P.resc.forEach(r=>{const c=freeCell(0);if(c)NPCS.push({...r,cap:false,x:c.x,y:c.y})});P.resc=[];
+  const rc=freeCell(4);
+  if(rc)E.push({x:rc.x,y:rc.y,sym:'r',name:'Rato',col:'#bbb',mhp:8,hp:8,dmg:2,def:0,type:0,fx:'',xp:0,gold:[0,0],st:{},al:0});
+  render();
+}
+function start(){if(STARTED)return;STARTED=true;if(localStorage.getItem('rpglike_run'))menuStart();else newGame();fit()}
+
+const CHD={lv:1,xp:0,nx:40,mhp:100,str:0,ldef:0,gold:0};
+function loadChar(){try{return{...CHD,...JSON.parse(localStorage.getItem('rpglike_char')||'{}')}}catch(e){return{...CHD}}}
+function saveChar(o){try{localStorage.setItem('rpglike_char',JSON.stringify(o))}catch(e){}}
+function saveRun(){try{localStorage.setItem('rpglike_run',JSON.stringify({P,F,T,M,EXP,E,IT,TR,NPCS,SHOP,KN,PCL,TTL,TOWNN,TOWNI,INPLACE,PLACE_POS}))}catch(e){}}
+function loadRun(){try{const d=JSON.parse(localStorage.getItem('rpglike_run')||'null');if(!d)return false;P=d.P;F=d.F;T=d.T;M=d.M;EXP=d.EXP;E=d.E;IT=d.IT;TR=d.TR;NPCS=d.NPCS;SHOP=d.SHOP;KN=d.KN;PCL=d.PCL;TTL=d.TTL;TOWNN=d.TOWNN;TOWNI=d.TOWNI;INPLACE=d.INPLACE||null;PLACE_POS=d.PLACE_POS||null;FXc=[];return true}catch(e){return false}}
+function clearRun(){try{localStorage.removeItem('rpglike_run')}catch(e){}}
+function menuStart(){
+  OVER=true;MODE='menu';
+  $('panel').innerHTML='<b>RPGLiKe — Guardian Edition v2</b><button onclick="continueGame()">CONTINUAR</button><button onclick="novoJogo()">NOVO JOGO (apaga a partida salva)</button>';
+  $('panel').classList.add('on');
+}
+function continueGame(){if(!loadRun())return novoJogo();OVER=false;MODE=null;$('panel').classList.remove('on');render()}
+function novoJogo(){clearRun();OVER=false;newGame()}
+function src(n){return ZURL[n]||SFXD+n+'.mp3'}
+function loadZip(){
+  if(ZSTATE)return;
+  if(!window.JSZip){ZSTATE=3;return}
+  ZSTATE=1;
+  fetch('sounds.zip').then(r=>{if(!r.ok)throw 0;return r.arrayBuffer()})
+  .then(b=>JSZip.loadAsync(b)).then(z=>{
+    const jobs=[];
+    z.forEach((p,f)=>{if(!f.dir&&/\.mp3$/i.test(p))jobs.push(f.async('blob').then(bl=>{ZURL[p.split('/').pop().replace(/\.mp3$/i,'')]=URL.createObjectURL(bl)}))});
+    return Promise.all(jobs)
+  }).then(()=>{ZSTATE=2},()=>{ZSTATE=3}).then(()=>{const k=musKey;musKey='';music(k)});
+}
+let SOMERR_DUMMY=0;
+function somErro(){if(SOMERR)return;SOMERR=true;log('Som não encontrado: a pasta sounds precisa estar AO LADO do HTML, não dentro dela.','#f88')}
+function unlock(){if(UNLOCKED)return;UNLOCKED=true;loadZip();if(mus&&!MUTED)mus.play().catch(()=>{})}
+function sfx(k){if(MUTED||!UNLOCKED||ZSTATE===1||!SFX[k])return;try{const a=new Audio(src(SFX[k]));a.volume=.6;a.onerror=somErro;a.play().catch(()=>{})}catch(e){}}
+let mKey='',mTimer=null;
+function mkMus(key){const a=new Audio(src(TRK[key]));a.onerror=somErro;return a}
+function stopMus(){clearInterval(mTimer);if(mus){mus.pause();mus=null}}
+function music(key){
+  if(key===musKey)return;musKey=key;
+  if(ZSTATE===1)return;
+  stopMus();
+  if(!key)return;
+  mKey=key;
+  mus=mkMus(key);mus.loop=true;mus.volume=MUTED?0:.35;
+  if(UNLOCKED&&!MUTED)mus.play().catch(()=>{});
+}
+function xfade(){
+  if(!mus||mus.xf)return;
+  const d=mus.duration;
+  if(!d||!isFinite(d)||d-mus.currentTime>2.5)return;
+  mus.xf=true;
+  const old=mus,n=mkMus(mKey);
+  n.volume=0;
+  if(UNLOCKED&&!MUTED)n.play().catch(()=>{});
+  mus=n;
+  let t=0;
+  const iv=setInterval(()=>{
+    t+=0.1;const f=Math.min(1,t/2.5);
+    n.volume=MUTED?0:.35*f;old.volume=MUTED?0:.35*(1-f);
+    if(f>=1){clearInterval(iv);old.pause()}
+  },100);
+}
+function musicFor(){return F<0||isTown(F)?'vila':F%5===0?'chefe':BTRK[(F-1)%BTRK.length]}
+function toggleMute(){
+  MUTED=!MUTED;
+  if(mus){if(MUTED)mus.pause();else mus.play().catch(()=>{})}
+  log(MUTED?'Som desligado':'Som ligado','#999');
+}
+
+document.querySelectorAll('[data-k]').forEach(b=>b.onpointerdown=ev=>{ev.preventDefault();act(b.dataset.k)});
+window.onkeydown=e=>{
+  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key))e.preventDefault();
+  act(e.key);
+};
+window.onresize=()=>{fit();render()};
+const READY=window.JSZip?Promise.all([loadPack('textos.zip',(n,t)=>TXT[n]=t),loadPack('mapas.zip',(n,t)=>{if(n==='mundo.txt')WORLD=t;else if(/\.txt$/.test(n))MAPAS.push({n,t})})]):Promise.resolve();
+READY.then(start);setTimeout(start,3000);
+</script>
+</body></html>
